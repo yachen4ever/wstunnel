@@ -11,8 +11,8 @@ func usage() {
 	fmt.Fprintln(os.Stderr, "")
 	fmt.Fprintln(os.Stderr, "Usage:")
 	fmt.Fprintln(os.Stderr, "  wstunnel genkey  -dir <dir>")
-	fmt.Fprintln(os.Stderr, "  wstunnel server  -bind <addr> -target <addr> -authdir <dir>")
-	fmt.Fprintln(os.Stderr, "  wstunnel client  -bind <addr> -url <ws://...> -key <private.pem>")
+	fmt.Fprintln(os.Stderr, "  wstunnel server  -bind <addr> -target <addr> -authdir <dir> [-v]")
+	fmt.Fprintln(os.Stderr, "  wstunnel client  -bind <addr> -url <ws://...> -key <private.pem> [-v]")
 	fmt.Fprintln(os.Stderr, "")
 	fmt.Fprintln(os.Stderr, "Subcommands:")
 	fmt.Fprintln(os.Stderr, "  genkey   Generate an ed25519 keypair into -dir (private.pem + public.pem).")
@@ -21,8 +21,8 @@ func usage() {
 	fmt.Fprintln(os.Stderr, "  client   Run tunnel client: listens TCP on -bind, forwards via WS -url,")
 	fmt.Fprintln(os.Stderr, "           authenticates with -key private key.")
 	fmt.Fprintln(os.Stderr, "")
-	fmt.Fprintln(os.Stderr, "Flags:")
-	flag.PrintDefaults()
+	fmt.Fprintln(os.Stderr, "Common flags:")
+	fmt.Fprintln(os.Stderr, "  -v       Verbose: log per-byte traffic direction (off by default).")
 }
 
 func main() {
@@ -53,7 +53,9 @@ func main() {
 		bind := fs.String("bind", "0.0.0.0:8888", "address to listen for WS")
 		target := fs.String("target", "", "destination TCP address (e.g. 127.0.0.1:25565)")
 		authDir := fs.String("authdir", "./keys", "directory containing authorized *.pem public keys")
+		v := fs.Bool("v", false, "verbose: log per-byte traffic direction (C→S/S→C)")
 		_ = fs.Parse(os.Args[2:])
+		verbose = *v
 		if *target == "" {
 			fmt.Fprintln(os.Stderr, "server: -target is required")
 			os.Exit(2)
@@ -65,7 +67,9 @@ func main() {
 		bind := fs.String("bind", "127.0.0.1:25565", "local TCP address to listen")
 		url := fs.String("url", "", "websocket URL of server (e.g. ws://host:8888/ws)")
 		keyPath := fs.String("key", "./private.pem", "client private key file")
+		v := fs.Bool("v", false, "verbose: log per-byte traffic direction (L→R/R→L)")
 		_ = fs.Parse(os.Args[2:])
+		verbose = *v
 		if *url == "" {
 			fmt.Fprintln(os.Stderr, "client: -url is required")
 			os.Exit(2)

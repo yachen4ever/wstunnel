@@ -27,6 +27,11 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true },
 }
 
+// verbose 控制是否打印每个字节方向的流量日志（C→S/S→C、L→R/R→L）。
+// 默认 false：只打隧道建立/断开、鉴权、错误等运维必要事件。
+// 由 -v 命令行开关打开。
+var verbose bool
+
 // Server 是 wstunnel 服务端。
 type Server struct {
 	DestAddress string
@@ -123,7 +128,9 @@ func bridge(ws *websocket.Conn, tcp net.Conn, serverSide bool) {
 					tcp.Close()
 					return
 				}
-				log.Printf("%s %d", dir1, n)
+				if verbose {
+					log.Printf("%s %d", dir1, n)
+				}
 			}
 			if err != nil {
 				if err != io.EOF {
@@ -159,7 +166,9 @@ func bridge(ws *websocket.Conn, tcp net.Conn, serverSide bool) {
 			ws.Close()
 			return
 		}
-		log.Printf("%s %d", dir2, len(buf))
+		if verbose {
+			log.Printf("%s %d", dir2, len(buf))
+		}
 	}
 }
 

@@ -115,7 +115,9 @@ func bridgeClient(ws *websocket.Conn, tcp net.Conn, writeMu *sync.Mutex, ctx con
 					tcp.Close()
 					return
 				}
-				log.Printf("%s %d", dir1, n)
+				if verbose {
+					log.Printf("%s %d", dir1, n)
+				}
 			}
 			if err != nil {
 				tcp.Close()
@@ -140,7 +142,9 @@ func bridgeClient(ws *websocket.Conn, tcp net.Conn, writeMu *sync.Mutex, ctx con
 			log.Printf("%s write err: %v", dir2, err)
 			return
 		}
-		log.Printf("%s %d", dir2, len(buf))
+		if verbose {
+			log.Printf("%s %d", dir2, len(buf))
+		}
 	}
 }
 

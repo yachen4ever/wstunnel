@@ -1,5 +1,5 @@
 module github.com/rinsuki/wstunnel
 
-go 1.13
+go 1.26
 
-require github.com/gorilla/websocket v1.4.1
+require github.com/gorilla/websocket v1.5.3

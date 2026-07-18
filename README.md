@@ -1,14 +1,3 @@
----
-AIGC:
-  ContentProducer: '001191110102MAD55U9H0F10002'
-  ContentPropagator: '001191110102MAD55U9H0F10002'
-  Label: '1'
-  ProduceID: 'b562544e-a41e-4cfc-b326-998368b9d1f8'
-  PropagateID: 'b562544e-a41e-4cfc-b326-998368b9d1f8'
-  ReservedCode1: '33d486d3-1446-4ea5-96c2-d3989bc90f1a'
-  ReservedCode2: '33d486d3-1446-4ea5-96c2-d3989bc90f1a'
----
-
 # wstunnel
 
 基于 WebSocket 的 TCP 隧道，使用 ed25519 挑战-响应进行身份认证。

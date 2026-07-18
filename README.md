@@ -3,147 +3,125 @@ AIGC:
   ContentProducer: '001191110102MAD55U9H0F10002'
   ContentPropagator: '001191110102MAD55U9H0F10002'
   Label: '1'
-  ProduceID: 'dca56721-8bcf-4b44-acf8-06e169e9e454'
-  PropagateID: 'dca56721-8bcf-4b44-acf8-06e169e9e454'
-  ReservedCode1: 'd54da6c7-5428-4245-9ea3-cf42c6ade0bd'
-  ReservedCode2: 'd54da6c7-5428-4245-9ea3-cf42c6ade0bd'
+  ProduceID: 'b562544e-a41e-4cfc-b326-998368b9d1f8'
+  PropagateID: 'b562544e-a41e-4cfc-b326-998368b9d1f8'
+  ReservedCode1: '33d486d3-1446-4ea5-96c2-d3989bc90f1a'
+  ReservedCode2: '33d486d3-1446-4ea5-96c2-d3989bc90f1a'
 ---
 
 # wstunnel
 
-TCP over WebSocket with ed25519 challenge-response authentication.
+基于 WebSocket 的 TCP 隧道，使用 ed25519 挑战-响应进行身份认证。
 
 ```
-[something tcp server]
+[目标 TCP 服务]
  |
  |  <= TCP
  |
-[wstunnel server]   <- holds authorized client public keys
+[wstunnel server]   <- 持有已授权客户端的公钥
  ||
- || <= WebSocket (ed25519 authenticated)
+ || <= WebSocket（ed25519 鉴权）
  ||
-[reverse proxy / CDN (optional)]
+[反向代理 / CDN（可选）]
  ||
  || <= WebSocket
  ||
-[wstunnel client]   <- holds the matching private key
+[wstunnel client]   <- 持有匹配的私钥
  |
  | <= TCP
  |
-[something tcp client]
+[TCP 客户端]
 ```
 
-## Features
+## 功能特性
 
-- **TCP over WebSocket**: tunnel any TCP service through a WebSocket connection.
-- **ed25519 challenge-response auth**: private key never transmitted; each
-  connection uses a fresh random nonce, so captures are useless for replay.
-- **Server-side public key whitelist**: drop a `.pem` file per authorized
-  client into the auth dir; unknown keys are rejected before any data flows.
-- **Heartbeat**: client sends WebSocket Ping every 30s; both sides reset their
-  read deadline on any Ping/Pong. Survives reverse proxies with idle timeouts.
-- **Reconnect with exponential backoff**: when a client-side WS dial fails, it
-  retries with 1s→2s→4s→8s→16s backoff (capped at 30s), up to 5 attempts.
-- **Safe defaults**: the server refuses to start if no authorized public keys
-  are configured — there is no "no auth" mode.
+- **TCP over WebSocket**：把任意 TCP 服务封装进 WebSocket 传输，便于穿过只放行 HTTP/WS 流量的网络。
+- **ed25519 挑战-响应鉴权**：私钥永不上网，每次连接使用全新的随机 nonce，抓包无法重放。
+- **服务端公钥白名单**：每个授权客户端放一个 `.pem` 公钥文件到鉴权目录；未授权的密钥在数据发送前就被拒绝。
+- **心跳保活**：客户端每 30 秒发送 WebSocket Ping，双方在收到任意 Ping/Pong 时续约读超时，能穿过反向代理的空闲断连策略。
+- **指数退避重连**：客户端 WS 拨号失败时按 1s→2s→4s→8s→16s（上限 30s）退避重试，最多 5 次。
+- **安全默认**：服务端在未配置任何授权公钥时拒绝启动——不存在"无鉴权"模式。
 
-## Build
+## 编译
 
 ```
 go build -o wstunnel .
 ```
 
-Requires Go 1.21+ (tested on Go 1.26.5). Only depends on
-`github.com/gorilla/websocket`.
+需要 Go 1.21+（已在 Go 1.26.5 下测试）。仅依赖 `github.com/gorilla/websocket`。
 
-## Usage
+## 使用方法
 
-### 1. Generate a keypair
+### 1. 生成密钥对
 
-The client keeps `private.pem`; the server needs `public.pem`.
+客户端保留 `private.pem`，服务端需要 `public.pem`。
 
 ```
 wstunnel genkey -dir ./keys
 ```
 
-This produces `./keys/private.pem` and `./keys/public.pem`.
+该命令会在 `./keys/` 下生成 `private.pem` 和 `public.pem`。
 
-### 2. Start the server
+### 2. 启动服务端
 
-Place each authorized client's `public.pem` into a directory (one file per
-client; the filename is irrelevant, only the `.pem` extension matters).
+把每个已授权客户端的 `public.pem` 放进一个目录（一个客户端一个文件，文件名随意，只看 `.pem` 后缀）。
 
 ```
 wstunnel server -bind 0.0.0.0:8888 -target 127.0.0.1:25565 -authdir ./server-keys
 ```
 
-Flags:
-- `-bind`    address to listen for WebSocket connections (default `0.0.0.0:8888`)
-- `-target`  destination TCP service to forward traffic to (required)
-- `-authdir` directory containing authorized `*.pem` public keys (required)
+参数：
+- `-bind`    监听 WebSocket 的地址（默认 `0.0.0.0:8888`）
+- `-target`  要转发到的目标 TCP 服务地址（必填）
+- `-authdir` 存放已授权 `*.pem` 公钥的目录（必填）
 
-### 3. Start the client
+### 3. 启动客户端
 
 ```
 wstunnel client -bind 127.0.0.1:25565 -url ws://server:8888/ws -key ./private.pem
 ```
 
-Flags:
-- `-bind` local TCP address the client listens on (default `127.0.0.1:25565`)
-- `-url`  WebSocket URL of the server (required)
-- `-key`  path to the client's private key (default `./private.pem`)
+参数：
+- `-bind` 客户端本地监听的 TCP 地址（默认 `127.0.0.1:25565`）
+- `-url`  服务端的 WebSocket URL（必填）
+- `-key`  客户端私钥文件路径（默认 `./private.pem`）
 
-### 4. Connect
+### 4. 连接使用
 
-Any TCP client talking to `127.0.0.1:25565` on the client host is now tunneled
-to the server's `-target` address. For example, with `wstunnel` in front of an
-SSH server on the remote side, `ssh -p 25565 user@127.0.0.1` works as if the
-SSH server were local.
+客户端主机上任何 TCP 客户端访问 `127.0.0.1:25565`，流量都会被隧穿到服务端的 `-target` 地址。例如远端有 SSH 服务在 wstunnel 后面，`ssh -p 25565 user@127.0.0.1` 就像 SSH 服务在本地一样。
 
-## Auth protocol
+## 鉴权协议
 
-The handshake runs after the WebSocket is established and before any data
-crosses the wire. All handshake frames are `BinaryMessage` with a 1-byte type
-prefix; once the handshake succeeds, all subsequent `BinaryMessage` payloads
-are raw TCP bytes (no prefix, no overhead).
+握手在 WebSocket 建立后、数据转发前进行。所有握手帧都是 `BinaryMessage`，首字节为类型标识；握手通过后，后续所有 `BinaryMessage` 的 payload 都是纯 TCP 字节（无前缀、零开销）。
 
 ```
-server -> client : [0x01][32-byte random nonce]
-client -> server : [0x02][32-byte public key][64-byte ed25519 signature of nonce]
-server -> client : [0x03]                              // OK, enter data mode
-                   or [0x04][reason...]                 // reject and close
+server -> client : [0x01][32 字节随机 nonce]
+client -> server : [0x02][32 字节公钥][64 字节对 nonce 的 ed25519 签名]
+server -> client : [0x03]                              // 通过，进入数据模式
+                   或 [0x04][原因...]                   // 拒绝并断开
 ```
 
-- The nonce is 32 bytes from `crypto/rand` — replay probability is negligible.
-- The server looks the advertised public key up in its whitelist before
-  calling `ed25519.Verify`. Whichever check fails, the client sees the exact
-  reason in the `[0x04]` frame (also logged with the key fingerprint server-side).
-- Handshake deadline is 10s to resist slow-auth attacks.
-- If the handshake fails the client does **not** reconnect: a bad key or a
-  protocol mismatch will not fix itself by retrying. Network-level dial
-  failures, on the other hand, do trigger the backoff retry loop.
+- nonce 来自 `crypto/rand` 共 32 字节，重放概率可忽略。
+- 服务端先在白名单中查找声明的公钥，再调用 `ed25519.Verify` 验签。任一检查失败，客户端都能在 `[0x04]` 帧中看到具体原因（服务端日志也会记录公钥指纹）。
+- 握手超时为 10 秒，用于防御慢速认证攻击。
+- 握手失败时客户端**不会**重试：密钥错误或协议不匹配重试也没用。但网络层面的拨号失败会触发指数退避重试。
 
-## Key format
+## 密钥格式
 
-Keys are stored as PEM (`PRIVATE KEY` / `PUBLIC KEY`) wrapping PKCS#8 / SPKI
-DER. This is plain Go standard library, no OpenSSH dependency. Use the bundled
-`genkey` subcommand to create them.
+密钥以 PEM 格式（`PRIVATE KEY` / `PUBLIC KEY`）封装 PKCS#8 / SPKI DER 编码。纯 Go 标准库实现，不依赖 OpenSSH。使用自带的 `genkey` 子命令生成即可。
 
-Server-side fingerprints logged for audit look like `ed25519:C2F2522C` (the
-first 4 bytes of the public key in hex) — enough to tell clients apart, not
-enough to be a secret.
+服务端日志中用于审计的公钥指纹形如 `ed25519:C2F2522C`（公钥前 4 字节的十六进制），够区分不同客户端，但不足以泄露密钥本身。
 
-## File layout
+## 文件结构
 
-- `main.go`    CLI entrypoint (subcommands: `genkey`, `server`, `client`)
-- `keys.go`    keypair generation, loading, and whitelist
-- `auth.go`    challenge-response handshake protocol
-- `server.go`  server side: HTTP upgrade + auth + TCP dial + bridge + heartbeat
-- `client.go`  client side: TCP listen + WS dial w/ retry + auth + bridge + heartbeat
+- `main.go`    命令行入口（子命令：`genkey`、`server`、`client`）
+- `keys.go`    密钥对的生成、加载与白名单管理
+- `auth.go`    挑战-响应握手协议
+- `server.go`  服务端：HTTP 升级 + 鉴权 + TCP 拨号 + 桥接 + 心跳
+- `client.go`  客户端：TCP 监听 + WS 拨号(带重试) + 鉴权 + 桥接 + 心跳
 
-## Caveats
+## 已知限制
 
-- No TLS. Put a reverse proxy (nginx, Caddy) in front to terminate `wss://`.
-- No multiplexing: each TCP connection from a client opens one WebSocket.
-- The server sends logs of every byte direction to stderr; trim this for
-  production if you find it noisy.
+- 不内置 TLS。请用反向代理（nginx、Caddy）在前端终止 `wss://`。
+- 不做连接多路复用，每个客户端 TCP 连接对应一条独立 WebSocket。
+- 服务端会把每个字节方向的日志打到 stderr，生产环境若觉得吵可自行删减。

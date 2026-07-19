@@ -11,13 +11,13 @@ jobs:
     name: Build
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/setup-go@v1
-      with:
-        go-version: 1.13
-    - run: go get github.com/mitchellh/gox
-    - uses: actions/checkout@v2
-    - run: PATH=$HOME/go/bin:$PATH ./crossbuild.sh
-    - uses: actions/upload-artifact@v1
-      with:
-        name: binaries
-        path: binaries
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+      - run: go vet ./...
+      - run: ./crossbuild.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binaries
+          path: binaries/

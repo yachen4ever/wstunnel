@@ -6,8 +6,12 @@ import (
 	"os"
 )
 
+// version 在编译时由 ldflags 注入，默认值用于 go build 不带 ldflags 的场景。
+// 脚本: -ldflags "-X main.version=$(git describe --tags --always 2>/dev/null || echo dev)"
+var version = "dev"
+
 func usage() {
-	fmt.Fprintln(os.Stderr, "wstunnel - TCP over WebSocket with ed25519 challenge-response auth")
+	fmt.Fprintf(os.Stderr, "wstunnel %s - TCP over WebSocket with ed25519 challenge-response auth\n", version)
 	fmt.Fprintln(os.Stderr, "")
 	fmt.Fprintln(os.Stderr, "Usage:")
 	fmt.Fprintln(os.Stderr, "  wstunnel genkey  -dir <dir>")
@@ -32,6 +36,10 @@ func main() {
 	}
 
 	switch os.Args[1] {
+	case "version", "--version":
+		fmt.Println("wstunnel", version)
+		return
+
 	case "genkey":
 		fs := flag.NewFlagSet("genkey", flag.ExitOnError)
 		dir := fs.String("dir", "./keys", "output directory for keypair")

@@ -98,10 +98,11 @@ wstunnel client -bind 127.0.0.1:25565 -url ws://server:8888/ws -key ./private.pe
 ```
 
 参数：
-- `-bind` 客户端本地监听的 TCP 地址（默认 `127.0.0.1:25565`）
-- `-url`  服务端的 WebSocket URL（必填）
-- `-key`  客户端私钥文件路径（默认 `./private.pem`）
-- `-v`    打印每个字节方向的流量日志（默认关闭，详见下文「日志」一节）
+- `-bind`     客户端本地监听的 TCP 地址（默认 `127.0.0.1:25565`）
+- `-url`      服务端的 WebSocket URL（必填，支持 `ws://` 和 `wss://`）
+- `-key`      客户端私钥文件路径（默认 `./private.pem`）
+- `-v`        打印每个字节方向的流量日志（默认关闭，详见下文「日志」一节）
+- `-insecure` 跳过 TLS 证书验证（仅用于 `wss://` + 自签名证书场景，见下文「nginx 反向代理」一节）
 
 ### 4. 连接使用
 
@@ -232,6 +233,22 @@ server {
 - **路径必须对上**：wstunnel server 只注册了 `/ws` 路径，nginx 的 `location` 要和它一致，否则会 404。
 - **日志里的 client IP 是 nginx 的**：经反代后 wstunnel 看到的 `r.RemoteAddr` 是 `127.0.0.1`。nginx 配的 `X-Real-IP` / `X-Forwarded-For` 头可用于审计（当前 wstunnel 尚未读取这些头）。
 - **慎用 Cloudflare 等 CDN**：免费版对 WS 有空闲断连限制且会限制子协议，wstunnel 走 CDN 多半不行，建议直连或自建反代。
+
+### 自签名证书与 `-insecure` 参数
+
+当 nginx 终止 `wss://` 且使用自签名证书（内网无域名、无公共 CA 场景）时，wstunnel 客户端走 Go 标准 TLS 校验会因证书链不受信任而拨号失败（报 `x509: certificate signed by unknown authority`）。
+
+有两种解决方式：
+
+1. **`-insecure` 参数（零客户端配置）**：拨号时跳过 TLS 证书验证。适合客户端机器不便导入 CA 证书的场景。
+   ```bash
+   wstunnel client -url wss://tunnel.example.com/ws -key ./private.pem -insecure
+   ```
+   仅跳过 TLS 层证书校验，WebSocket 之上的 ed25519 鉴权照常进行，安全性由挑战-响应保证。
+
+2. **导入 CA 到系统信任库**：把签发证书的 CA 根证书导入客户端系统信任库（Windows 用 `certutil -addstore Root ca.crt`，Linux 放入 `/usr/local/share/ca-certificates/`），Go 1.18+ 会自动读取系统证书池，无需 `-insecure`。
+
+两种方式任选其一。内网临时调试场景推荐 `-insecure` 省事；长期正式环境推荐导入 CA。
 
 ## 已知限制
 

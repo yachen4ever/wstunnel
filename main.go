@@ -16,7 +16,7 @@ func usage() {
 	fmt.Fprintln(os.Stderr, "Usage:")
 	fmt.Fprintln(os.Stderr, "  wstunnel genkey  -dir <dir>")
 	fmt.Fprintln(os.Stderr, "  wstunnel server  -bind <addr> -target <addr> -authdir <dir> [-v]")
-	fmt.Fprintln(os.Stderr, "  wstunnel client  -bind <addr> -url <ws://...> -key <private.pem> [-v]")
+	fmt.Fprintln(os.Stderr, "  wstunnel client  -bind <addr> -url <(ws|wss)://...> -key <private.pem> [-v] [-insecure]")
 	fmt.Fprintln(os.Stderr, "")
 	fmt.Fprintln(os.Stderr, "Subcommands:")
 	fmt.Fprintln(os.Stderr, "  genkey   Generate an ed25519 keypair into -dir (private.pem + public.pem).")
@@ -24,6 +24,7 @@ func usage() {
 	fmt.Fprintln(os.Stderr, "           authorizes clients whose public keys are in -authdir/*.pem.")
 	fmt.Fprintln(os.Stderr, "  client   Run tunnel client: listens TCP on -bind, forwards via WS -url,")
 	fmt.Fprintln(os.Stderr, "           authenticates with -key private key.")
+	fmt.Fprintln(os.Stderr, "           Use -insecure with wss:// to skip TLS cert verification (self-signed).")
 	fmt.Fprintln(os.Stderr, "")
 	fmt.Fprintln(os.Stderr, "Common flags:")
 	fmt.Fprintln(os.Stderr, "  -v       Verbose: log per-byte traffic direction (off by default).")
@@ -76,13 +77,14 @@ func main() {
 		url := fs.String("url", "", "websocket URL of server (e.g. ws://host:8888/ws)")
 		keyPath := fs.String("key", "./private.pem", "client private key file")
 		v := fs.Bool("v", false, "verbose: log per-byte traffic direction (L→R/R→L)")
+		insecure := fs.Bool("insecure", false, "skip TLS certificate verification (for wss:// with self-signed certs)")
 		_ = fs.Parse(os.Args[2:])
 		verbose = *v
 		if *url == "" {
 			fmt.Fprintln(os.Stderr, "client: -url is required")
 			os.Exit(2)
 		}
-		client(*bind, *url, *keyPath)
+		client(*bind, *url, *keyPath, *insecure)
 
 	case "-h", "--help", "help":
 		usage()

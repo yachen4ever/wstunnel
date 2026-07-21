@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/ed25519"
+	"crypto/tls"
 	"log"
 	"net"
 	"sync"
@@ -21,12 +22,16 @@ const (
 
 // dialWithRetry 带指数退避地拨号 WS 并完成鉴权握手。
 // 成功返回已通过鉴权的 WS 连接；失败返回最后一次错误。
-func dialWithRetry(websocketURL string, priv ed25519.PrivateKey) (*websocket.Conn, error) {
+// insecure=true 时跳过 TLS 证书验证（用于 wss:// + 自签名证书场景）。
+func dialWithRetry(websocketURL string, priv ed25519.PrivateKey, insecure bool) (*websocket.Conn, error) {
 	var lastErr error
 	backoff := dialRetryInitial
 	for attempt := 1; attempt <= dialRetryMaxNum; attempt++ {
 		d := &websocket.Dialer{
 			HandshakeTimeout: dialTimeout,
+		}
+		if insecure {
+			d.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 		}
 		ws, _, err := d.Dial(websocketURL, nil)
 		if err == nil {
@@ -73,10 +78,10 @@ func startHeartbeat(ws *websocket.Conn, writeMu *sync.Mutex, ctx context.Context
 
 // handleLocalConn 处理单个本地 TCP 连接：
 // 拨 WS + 鉴权 + 心跳 + 双向桥接。
-func handleLocalConn(tcp net.Conn, websocketURL string, priv ed25519.PrivateKey) {
+func handleLocalConn(tcp net.Conn, websocketURL string, priv ed25519.PrivateKey, insecure bool) {
 	defer tcp.Close()
 
-	ws, err := dialWithRetry(websocketURL, priv)
+	ws, err := dialWithRetry(websocketURL, priv, insecure)
 	if err != nil {
 		log.Printf("establish tunnel failed: %v", err)
 		return
@@ -148,7 +153,7 @@ func bridgeClient(ws *websocket.Conn, tcp net.Conn, writeMu *sync.Mutex, ctx con
 	}
 }
 
-func client(bindAddr, websocketURL, keyPath string) {
+func client(bindAddr, websocketURL, keyPath string, insecure bool) {
 	priv, err := loadPrivateKey(keyPath)
 	if err != nil {
 		log.Fatalf("load private key %s: %v", keyPath, err)
@@ -167,6 +172,6 @@ func client(bindAddr, websocketURL, keyPath string) {
 			log.Printf("accept: %v", err)
 			return
 		}
-		go handleLocalConn(tcp, websocketURL, priv)
+		go handleLocalConn(tcp, websocketURL, priv, insecure)
 	}
 }

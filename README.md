@@ -42,15 +42,18 @@ go build -o wstunnel .
 
 需要 Go 1.21+（已在 Go 1.26.5 下测试）。仅依赖 `github.com/gorilla/websocket`。
 
-### 交叉编译三个平台
+### 交叉编译多平台
 
 仓库自带两个等价的交叉编译脚本，用 Go 原生 `GOOS/GOARCH` 交叉编译，无需 `gox` 等外部工具。固定目标：
 
 | 平台 | 文件 |
 |------|------|
 | Linux amd64 | `binaries/wstunnel-linux-amd64` |
+| Linux arm64 | `binaries/wstunnel-linux-arm64` |
+| Linux armhf（32 位 ARMv6/v7，树莓派等） | `binaries/wstunnel-linux-armhf` |
 | Windows amd64 | `binaries/wstunnel-windows-amd64.exe` |
-| macOS arm64 | `binaries/wstunnel-darwin-arm64` |
+| macOS arm64 (Apple Silicon) | `binaries/wstunnel-darwin-arm64` |
+| macOS amd64 (Intel) | `binaries/wstunnel-darwin-amd64` |
 
 ```
 # macOS / Linux

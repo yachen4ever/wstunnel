@@ -281,3 +281,8 @@ sudo systemctl enable --now wstunnel-server
 - TLS 可选而非强制：`-tlscert/-tlskey` 开启原生 `wss://`，默认关闭（明文 `ws://`）。生产环境要么开原生 TLS，要么用反向代理（nginx、Caddy）在前端终止 `wss://`。
 - **单进程单目标**：一个 server 进程的 `-target` 在启动时固定，只能转发到唯一一个 TCP 服务。想同时转发多个服务（比如 SSH 和 RDP），需要起多个 server 进程，各绑不同端口、各指向自己的 `-target`。客户端同理，一个 client 进程只连一个 `-url`。
 - **不做连接多路复用**：client 端每接受一个本地 TCP 连接，都会向 server 新拨一条独立 WebSocket，而不是把多条 TCP 流复用到同一条 WS 上。10 个本地连接 = 10 条 WS 连接。并发本身不受限（每条连接在独立 goroutine 中处理），但连接数较多时 WS 握手开销会比多路复用方案高。
+
+## 致谢
+
+本项目最初 fork 自 [rinsuki/wstunnel](https://github.com/rinsuki/wstunnel)，第一版基于其代码。感谢 rinsuki 的原始工作（MIT License）。此后项目经历了持续的修改与功能扩展，现作为独立仓库维护；按 MIT 协议要求，[LICENSE](LICENSE) 中保留了原作者的版权声明。
+

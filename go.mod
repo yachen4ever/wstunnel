@@ -1,4 +1,4 @@
-module github.com/rinsuki/wstunnel
+module github.com/yachen4ever/wstunnel
 
 go 1.26
 

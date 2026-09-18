@@ -35,6 +35,8 @@ func dialWithRetry(websocketURL string, priv ed25519.PrivateKey, insecure bool) 
 		}
 		ws, _, err := d.Dial(websocketURL, nil)
 		if err == nil {
+			// 与 server 端对称：限制单帧大小，防止对端异常大帧
+			ws.SetReadLimit(maxMessageSize)
 			if err = clientHandshake(ws, priv); err == nil {
 				return ws, nil
 			}
@@ -108,7 +110,7 @@ func bridgeClient(ws *websocket.Conn, tcp net.Conn, writeMu *sync.Mutex, ctx con
 
 	// 协程: TCP -> WS
 	go func() {
-		buf := make([]byte, serverReadBufferSize)
+		buf := make([]byte, ioBufSize)
 		for {
 			n, err := tcp.Read(buf)
 			if n > 0 {

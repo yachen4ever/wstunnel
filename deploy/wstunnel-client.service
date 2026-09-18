@@ -1,0 +1,26 @@
+[Unit]
+Description=wstunnel client (TCP over WebSocket tunnel)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# 按实际部署修改：本地监听地址、服务端 URL、私钥路径
+# 自签名 wss 场景追加: -insecure
+# 私钥建议放 /etc/wstunnel 下，与下方 ProtectSystem=strict 兼容（仍可读）
+ExecStart=/usr/local/bin/wstunnel client \
+    -bind 127.0.0.1:25432 \
+    -url wss://tunnel.example.com/ws \
+    -key /etc/wstunnel/client/private.pem
+Restart=always
+RestartSec=3
+
+# 基础加固：全文件系统只读、禁止提权、私有 /tmp
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

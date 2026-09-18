@@ -13,16 +13,21 @@ import (
 )
 
 const (
-	serverReadBufferSize  = 1024
-	serverWriteBufferSize = 1024
-	heartbeatInterval     = 30 * time.Second // client 发 Ping 的间隔
-	readTimeout           = 90 * time.Second // 任意方向无消息即断开（含心跳）
-	writeWait             = 10 * time.Second // 单次 WriteControl 的超时
+	// ioBufSize 同时用作 TCP 读缓冲和 WS 单帧上限：大结果集/COPY 场景下
+	// 32KB 相比 1KB 显著减少 WS 帧头开销和系统调用次数。
+	ioBufSize = 32 * 1024
+	// maxMessageSize 须大于对端单帧上限（ioBufSize），防止未鉴权对端
+	// 发送超大帧触发无界内存分配。调整 ioBufSize 时需同步调整。
+	maxMessageSize    = 64 * 1024
+	heartbeatInterval = 10 * time.Second // client 发 Ping 的间隔
+	readTimeout       = 30 * time.Second // 任意方向无消息即断开（含心跳）；DB 场景宁可快速失败让应用重连
+	writeWait         = 10 * time.Second // 单次 WriteControl 的超时
+	targetDialTimeout = 5 * time.Second  // 拨号 -target 的超时；net.Dial 默认无超时，会挂到 OS 级 TCP 超时
 )
 
 var upgrader = websocket.Upgrader{
-	ReadBufferSize:  serverReadBufferSize,
-	WriteBufferSize: serverWriteBufferSize,
+	ReadBufferSize:  ioBufSize,
+	WriteBufferSize: ioBufSize,
 	// 隧道服务端不校验 Origin：鉴权由 ed25519 握手承担。
 	CheckOrigin: func(r *http.Request) bool { return true },
 }
@@ -45,6 +50,8 @@ func (s *Server) handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer ws.Close()
+	// 鉴权握手前即生效：握手消息最长 97 字节，64KB 上限只拦异常大帧
+	ws.SetReadLimit(maxMessageSize)
 
 	// 1. 鉴权握手
 	pub, err := serverHandshake(ws, s.Whitelist)
@@ -65,7 +72,7 @@ func (s *Server) handler(w http.ResponseWriter, r *http.Request) {
 		r.RemoteAddr, s.DestAddress, publicKeyFingerprint(pub))
 
 	// 2. 拨号目标 TCP
-	tcp, err := net.Dial("tcp", s.DestAddress)
+	tcp, err := (&net.Dialer{Timeout: targetDialTimeout}).Dial("tcp", s.DestAddress)
 	if err != nil {
 		log.Printf("dial target %s: %v", s.DestAddress, err)
 		return
@@ -115,7 +122,7 @@ func bridge(ws *websocket.Conn, tcp net.Conn, serverSide bool) {
 
 	// 协程 1: TCP -> WS
 	go func() {
-		buf := make([]byte, serverReadBufferSize)
+		buf := make([]byte, ioBufSize)
 		for {
 			n, err := tcp.Read(buf)
 			if n > 0 {
@@ -172,7 +179,12 @@ func bridge(ws *websocket.Conn, tcp net.Conn, serverSide bool) {
 	}
 }
 
-func server(bindAddr, destAddr, authDir string) {
+// server 启动服务端。tlsCert/tlsKey 同时非空时以原生 wss 监听（TLS 由自身终结），
+// 默认均为空、监听明文 ws——加密交给前置反代。
+func server(bindAddr, destAddr, authDir, tlsCert, tlsKey string) {
+	if (tlsCert == "") != (tlsKey == "") {
+		log.Fatal("server: -tlscert and -tlskey must be provided together to enable native wss")
+	}
 	wl, n, err := loadWhitelistFromDir(authDir)
 	if err != nil {
 		log.Fatalf("load authdir %s: %v", authDir, err)
@@ -187,6 +199,10 @@ func server(bindAddr, destAddr, authDir string) {
 		Whitelist:   wl,
 	}
 	http.HandleFunc("/ws", s.handler)
-	log.Printf("wstunnel server listening on %s, forwarding to %s", bindAddr, destAddr)
+	if tlsCert != "" {
+		log.Printf("wstunnel server listening on %s (wss), forwarding to %s", bindAddr, destAddr)
+		log.Fatal(http.ListenAndServeTLS(bindAddr, tlsCert, tlsKey, nil))
+	}
+	log.Printf("wstunnel server listening on %s (ws), forwarding to %s", bindAddr, destAddr)
 	log.Fatal(http.ListenAndServe(bindAddr, nil))
 }

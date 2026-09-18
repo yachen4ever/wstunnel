@@ -1,0 +1,26 @@
+[Unit]
+Description=wstunnel server (TCP over WebSocket tunnel)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# 按实际部署修改：监听地址、目标服务、公钥目录
+# 原生 wss 场景追加: -tlscert /etc/wstunnel/tls.crt -tlskey /etc/wstunnel/tls.key
+# 密钥等文件建议放 /etc/wstunnel 下，与下方 ProtectSystem=strict 兼容（仍可读）
+ExecStart=/usr/local/bin/wstunnel server \
+    -bind 127.0.0.1:8888 \
+    -target 127.0.0.1:5432 \
+    -authdir /etc/wstunnel/server-keys
+Restart=always
+RestartSec=3
+
+# 基础加固：全文件系统只读、禁止提权、私有 /tmp
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

@@ -15,13 +15,14 @@ func usage() {
 	fmt.Fprintln(os.Stderr, "")
 	fmt.Fprintln(os.Stderr, "Usage:")
 	fmt.Fprintln(os.Stderr, "  wstunnel genkey  -dir <dir>")
-	fmt.Fprintln(os.Stderr, "  wstunnel server  -bind <addr> -target <addr> -authdir <dir> [-v]")
+	fmt.Fprintln(os.Stderr, "  wstunnel server  -bind <addr> -target <addr> -authdir <dir> [-tlscert <crt> -tlskey <key>] [-v]")
 	fmt.Fprintln(os.Stderr, "  wstunnel client  -bind <addr> -url <(ws|wss)://...> -key <private.pem> [-v] [-insecure]")
 	fmt.Fprintln(os.Stderr, "")
 	fmt.Fprintln(os.Stderr, "Subcommands:")
 	fmt.Fprintln(os.Stderr, "  genkey   Generate an ed25519 keypair into -dir (private.pem + public.pem).")
-	fmt.Fprintln(os.Stderr, "  server   Run tunnel server: accepts WS on -bind, forwards TCP to -target,")
+	fmt.Fprintln(os.Stderr, "  server   Run tunnel server: accepts WS/WSS on -bind, forwards TCP to -target,")
 	fmt.Fprintln(os.Stderr, "           authorizes clients whose public keys are in -authdir/*.pem.")
+	fmt.Fprintln(os.Stderr, "           Native wss:// is opt-in: pass both -tlscert and -tlskey.")
 	fmt.Fprintln(os.Stderr, "  client   Run tunnel client: listens TCP on -bind, forwards via WS -url,")
 	fmt.Fprintln(os.Stderr, "           authenticates with -key private key.")
 	fmt.Fprintln(os.Stderr, "           Use -insecure with wss:// to skip TLS cert verification (self-signed).")
@@ -62,6 +63,8 @@ func main() {
 		bind := fs.String("bind", "0.0.0.0:8888", "address to listen for WS")
 		target := fs.String("target", "", "destination TCP address (e.g. 127.0.0.1:25565)")
 		authDir := fs.String("authdir", "./keys", "directory containing authorized *.pem public keys")
+		tlsCert := fs.String("tlscert", "", "TLS certificate PEM (set with -tlskey to serve native wss://)")
+		tlsKey := fs.String("tlskey", "", "TLS private key PEM (set with -tlscert to serve native wss://)")
 		v := fs.Bool("v", false, "verbose: log per-byte traffic direction (C→S/S→C)")
 		_ = fs.Parse(os.Args[2:])
 		verbose = *v
@@ -69,7 +72,7 @@ func main() {
 			fmt.Fprintln(os.Stderr, "server: -target is required")
 			os.Exit(2)
 		}
-		server(*bind, *target, *authDir)
+		server(*bind, *target, *authDir, *tlsCert, *tlsKey)
 
 	case "client":
 		fs := flag.NewFlagSet("client", flag.ExitOnError)

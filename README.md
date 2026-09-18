@@ -27,8 +27,9 @@
 - **TCP over WebSocket**：把任意 TCP 服务封装进 WebSocket 传输，便于穿过只放行 HTTP/WS 流量的网络。
 - **ed25519 挑战-响应鉴权**：私钥永不上网，每次连接使用全新的随机 nonce，抓包无法重放。
 - **服务端公钥白名单**：每个授权客户端放一个 `.pem` 公钥文件到鉴权目录；未授权的密钥在数据发送前就被拒绝。
-- **心跳保活**：客户端每 30 秒发送 WebSocket Ping，双方在收到任意 Ping/Pong 时续约读超时，能穿过反向代理的空闲断连策略。
+- **心跳保活**：客户端每 10 秒发送 WebSocket Ping，双方在收到任意 Ping/Pong 时续约读超时（30 秒无消息即断开），能穿过反向代理的空闲断连策略；DB 等场景下隧道故障会快速暴露给应用，便于连接池及时重连。
 - **指数退避重连**：客户端 WS 拨号失败时按 1s→2s→4s→8s→16s（上限 30s）退避重试，最多 5 次。
+- **原生 wss 可选**：`-tlscert/-tlskey` 让 wstunnel 自身终结 TLS，无需前置反代即可对外提供 `wss://`；默认关闭，保持「nginx 终止 TLS」的推荐形态不变。
 - **安全默认**：服务端在未配置任何授权公钥时拒绝启动——不存在"无鉴权"模式。
 
 ## 编译
@@ -89,7 +90,16 @@ wstunnel server -bind 0.0.0.0:8888 -target 127.0.0.1:25565 -authdir ./server-key
 - `-bind`    监听 WebSocket 的地址（默认 `0.0.0.0:8888`）
 - `-target`  要转发到的目标 TCP 服务地址（必填）
 - `-authdir` 存放已授权 `*.pem` 公钥的目录（必填）
+- `-tlscert` / `-tlskey` 两者同时提供时启用**原生 `wss://`**（TLS 由 wstunnel 自身终结）；默认不提供，监听明文 `ws://`
 - `-v`       打印每个字节方向的流量日志（默认关闭，详见下文「日志」一节）
+
+需要原生 `wss://`（不前置 nginx 的场景，例如 nginx 与 wstunnel 不同机）时：
+
+```
+wstunnel server -bind 0.0.0.0:8888 -target 127.0.0.1:25565 -authdir ./server-keys -tlscert ./tls.crt -tlskey ./tls.key
+```
+
+客户端照常传 `-url wss://...` 即可；自签名证书配合 `-insecure` 或给客户端导入 CA（见下文「自签名证书与 `-insecure` 参数」）。nginx 与 wstunnel 同机时，推荐维持「nginx 终止 TLS + wstunnel 明文 ws」的默认形态，两者职责最简单。
 
 ### 3. 启动客户端
 
@@ -102,7 +112,7 @@ wstunnel client -bind 127.0.0.1:25565 -url ws://server:8888/ws -key ./private.pe
 - `-url`      服务端的 WebSocket URL（必填，支持 `ws://` 和 `wss://`）
 - `-key`      客户端私钥文件路径（默认 `./private.pem`）
 - `-v`        打印每个字节方向的流量日志（默认关闭，详见下文「日志」一节）
-- `-insecure` 跳过 TLS 证书验证（仅用于 `wss://` + 自签名证书场景，见下文「nginx 反向代理」一节）
+- `-insecure` 跳过 TLS 证书验证（仅用于 `wss://` + 自签名证书场景，见下文「自签名证书与 `-insecure` 参数」一节）
 
 ### 4. 连接使用
 
@@ -137,6 +147,7 @@ server -> client : [0x03]                              // 通过，进入数据�
 - `auth.go`    挑战-响应握手协议
 - `server.go`  服务端：HTTP 升级 + 鉴权 + TCP 拨号 + 桥接 + 心跳
 - `client.go`  客户端：TCP 监听 + WS 拨号(带重试) + 鉴权 + 桥接 + 心跳
+- `deploy/`    systemd 单元示例（server / client 各一）
 
 ## 日志
 
@@ -174,7 +185,7 @@ proxy_set_header Connection "upgrade";
 
 ### 超时配合心跳
 
-wstunnel 的心跳参数：client 每 30s 发 Ping，双方读超时 90s。
+wstunnel 的心跳参数：client 每 10s 发 Ping，双方读超时 30s。
 
 nginx 默认 `proxy_read_timeout 60s` 偏短——虽然 WS 握手后 nginx 是透传，Ping/Pong 帧会续约 nginx 超时，但建议调大到 120s，留一次心跳丢失的余量：
 
@@ -183,7 +194,7 @@ proxy_read_timeout 120s;
 proxy_send_timeout 120s;
 ```
 
-记住一条规则：**nginx 读超时 > wstunnel 读超时 > 2 × 心跳间隔**。当前 120 > 90 > 60，成立。
+记住一条规则：**nginx 读超时 > wstunnel 读超时 > 2 × 心跳间隔**。当前 120 > 30 > 20，成立（nginx 读超时最低建议 45s，120s 余量更足）。
 
 ### 关掉 buffering
 
@@ -236,7 +247,7 @@ server {
 
 ### 自签名证书与 `-insecure` 参数
 
-当 nginx 终止 `wss://` 且使用自签名证书（内网无域名、无公共 CA 场景）时，wstunnel 客户端走 Go 标准 TLS 校验会因证书链不受信任而拨号失败（报 `x509: certificate signed by unknown authority`）。
+当 TLS 由 nginx 终止、或由 wstunnel 原生提供（`-tlscert/-tlskey`），且证书为自签名（内网无域名、无公共 CA 场景）时，wstunnel 客户端走 Go 标准 TLS 校验会因证书链不受信任而拨号失败（报 `x509: certificate signed by unknown authority`）。
 
 有两种解决方式：
 
@@ -250,8 +261,23 @@ server {
 
 两种方式任选其一。内网临时调试场景推荐 `-insecure` 省事；长期正式环境推荐导入 CA。
 
+## 部署：systemd 常驻
+
+长期运行建议用 systemd 托管，崩溃/重启后 3 秒内自动拉起。`deploy/` 下有 server / client 各一份单元示例：
+
+```
+sudo cp binaries/wstunnel-linux-amd64 /usr/local/bin/wstunnel
+sudo mkdir -p /etc/wstunnel
+sudo cp deploy/wstunnel-server.service /etc/systemd/system/
+# 按需修改 ExecStart 中的 -bind/-target/-authdir 等参数
+sudo systemctl daemon-reload
+sudo systemctl enable --now wstunnel-server
+```
+
+单元内置 `Restart=always` 与基础安全加固（文件系统只读、禁止提权），客户端同理安装 `wstunnel-client.service`。日志用 `journalctl -u wstunnel-server -f` 查看。
+
 ## 已知限制
 
-- 不内置 TLS。请用反向代理（nginx、Caddy）在前端终止 `wss://`。
+- TLS 可选而非强制：`-tlscert/-tlskey` 开启原生 `wss://`，默认关闭（明文 `ws://`）。生产环境要么开原生 TLS，要么用反向代理（nginx、Caddy）在前端终止 `wss://`。
 - **单进程单目标**：一个 server 进程的 `-target` 在启动时固定，只能转发到唯一一个 TCP 服务。想同时转发多个服务（比如 SSH 和 RDP），需要起多个 server 进程，各绑不同端口、各指向自己的 `-target`。客户端同理，一个 client 进程只连一个 `-url`。
 - **不做连接多路复用**：client 端每接受一个本地 TCP 连接，都会向 server 新拨一条独立 WebSocket，而不是把多条 TCP 流复用到同一条 WS 上。10 个本地连接 = 10 条 WS 连接。并发本身不受限（每条连接在独立 goroutine 中处理），但连接数较多时 WS 握手开销会比多路复用方案高。

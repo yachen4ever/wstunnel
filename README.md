@@ -73,7 +73,7 @@ GitHub Actions 在每次 push 到 `master` 和打 tag 时会自动跑这套脚�
 
 ### 1. 生成密钥对
 
-客户端保留 `private.pem`，服务端需要 `public.pem`。
+**`genkey` 只需在客户端运行一次**：客户端保留 `private.pem`，把 `public.pem` 交给服务端。服务端不需要自己的密钥对——它只存放各客户端的公钥。
 
 ```
 wstgo genkey -dir ./keys
@@ -83,23 +83,23 @@ wstgo genkey -dir ./keys
 
 ### 2. 启动服务端
 
-把每个已授权客户端的 `public.pem` 放进一个目录（一个客户端一个文件，文件名随意，只看 `.pem` 后缀）。
+把每个已授权客户端的 `public.pem` 放进一个目录（一个客户端一个文件，文件名随意——目录下所有文件都会尝试加载为公钥，无法解析的会在启动时告警跳过）。
 
 ```
-wstgo server -bind 0.0.0.0:8888 -target 127.0.0.1:25565 -authdir ./server-keys
+wstgo server -bind 0.0.0.0:8888 -target 127.0.0.1:25565 -authdir ./auth-keys
 ```
 
 参数：
 - `-bind`    监听 WebSocket 的地址（默认 `0.0.0.0:8888`）
 - `-target`  要转发到的目标 TCP 服务地址（必填）
-- `-authdir` 存放已授权 `*.pem` 公钥的目录（必填）
+- `-authdir` 存放已授权客户端公钥的目录（必填，文件名不限）
 - `-tlscert` / `-tlskey` 两者同时提供时启用**原生 `wss://`**（TLS 由 wstgo 自身终结）；默认不提供，监听明文 `ws://`
 - `-v`       打印每个字节方向的流量日志（默认关闭，详见下文「日志」一节）
 
 需要原生 `wss://`（不前置 nginx 的场景，例如 nginx 与 wstgo 不同机）时：
 
 ```
-wstgo server -bind 0.0.0.0:8888 -target 127.0.0.1:25565 -authdir ./server-keys -tlscert ./tls.crt -tlskey ./tls.key
+wstgo server -bind 0.0.0.0:8888 -target 127.0.0.1:25565 -authdir ./auth-keys -tlscert ./tls.crt -tlskey ./tls.key
 ```
 
 客户端照常传 `-url wss://...` 即可；自签名证书配合 `-insecure` 或给客户端导入 CA（见下文「自签名证书与 `-insecure` 参数」）。nginx 与 wstgo 同机时，推荐维持「nginx 终止 TLS + wstgo 明文 ws」的默认形态，两者职责最简单。
@@ -127,7 +127,7 @@ wstgo client -bind 127.0.0.1:25565 -url ws://server:8888/ws -key ./private.pem
 
 ```
 # 服务端
-wstgo server -bind 0.0.0.0:8888 -target 127.0.0.1:22 -authdir ./server-keys
+wstgo server -bind 0.0.0.0:8888 -target 127.0.0.1:22 -authdir ./auth-keys
 
 # 客户端
 wstgo client -bind 127.0.0.1:2222 -url wss://tunnel.example.com/ws -key ./private.pem
@@ -156,7 +156,7 @@ CLI 子命令（`server`/`client`）一次只能转发一个目标。需要单�
 [general]
 run_mode = "server"
 bind = "0.0.0.0:8888"            # WS 监听地址
-auth_dir = "/etc/wst/server-keys"
+auth_dir = "/etc/wstgo/auth-keys"
 
 [server]
 [server.ssh1]
@@ -176,7 +176,7 @@ type = "db"
 [general]
 run_mode = "client"
 url = "wss://tunnel.example.com/ws"   # 基础路径，实际连接 <url>/<label>
-key = "/etc/wst/client/private.pem"
+key = "/etc/wstgo/client/private.pem"
 allow_insecure = false                # wss + 自签名证书时置 true
 
 [client]

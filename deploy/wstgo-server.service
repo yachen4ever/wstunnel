@@ -13,7 +13,7 @@ ExecStart=/usr/local/bin/wstgo run -config /etc/wstgo/wstgo-server.toml
 # ExecStart=/usr/local/bin/wstgo server \
 #     -bind 127.0.0.1:8888 \
 #     -target 127.0.0.1:5432 \
-#     -authdir /etc/wstgo/server-keys
+#     -authdir /etc/wstgo/auth-keys
 # 原生 wss（不前置 nginx）暂只支持 CLI，追加: -tlscert /etc/wstgo/tls.crt -tlskey /etc/wstgo/tls.key
 
 # 配置、密钥等文件建议放 /etc/wstgo 下，与下方 ProtectSystem=strict 兼容（仍可读）

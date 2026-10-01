@@ -7,6 +7,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -90,6 +91,9 @@ func loadPublicKey(path string) (ed25519.PublicKey, error) {
 	if block == nil {
 		return nil, errors.New("no PEM block in public key file")
 	}
+	if strings.Contains(block.Type, "PRIVATE KEY") {
+		return nil, fmt.Errorf("%q is a PRIVATE key, not a public key (authdir only holds client public keys)", filepath.Base(path))
+	}
 	k, err := x509.ParsePKIXPublicKey(block.Bytes)
 	if err != nil {
 		return nil, fmt.Errorf("parse public key: %w", err)
@@ -111,14 +115,15 @@ func publicKeyFingerprint(pub ed25519.PublicKey) string {
 }
 
 // publicKeyWhitelist 是服务端持有的公钥白名单。
-// 加载自一个目录下所有 .pem 文件，每文件包含一个 SPKI PEM 公钥。
+// 加载自一个目录下的公钥文件（文件名不限），每文件一个 SPKI PEM 公钥。
 type publicKeyWhitelist struct {
 	mu   sync.RWMutex
 	keys map[string]ed25519.PublicKey // key = base64(pub)
 }
 
-// loadWhitelistFromDir 扫描 dir 下所有 .pem 文件，加载其中的公钥。
-// 文件不存在或目录为空时返回空白名单（调用方决定是否允许无鉴权）。
+// loadWhitelistFromDir 扫描 dir 下所有普通文件，尝试加载为 ed25519 公钥。
+// 文件名不限（.pem 只是惯例）：解析失败的文件告警跳过并注明原因；
+// 目录不存在返回空白名单；一个都没加载到时由调用方拒绝启动。
 func loadWhitelistFromDir(dir string) (*publicKeyWhitelist, int, error) {
 	w := &publicKeyWhitelist{keys: make(map[string]ed25519.PublicKey)}
 	entries, err := os.ReadDir(dir)
@@ -129,17 +134,23 @@ func loadWhitelistFromDir(dir string) (*publicKeyWhitelist, int, error) {
 		return nil, 0, fmt.Errorf("read authdir: %w", err)
 	}
 	count := 0
+	var seen []string
 	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".pem") {
+		if e.IsDir() {
 			continue
 		}
-		path := filepath.Join(dir, e.Name())
-		pub, err := loadPublicKey(path)
+		seen = append(seen, e.Name())
+		pub, err := loadPublicKey(filepath.Join(dir, e.Name()))
 		if err != nil {
-			return nil, 0, fmt.Errorf("load %s: %w", e.Name(), err)
+			log.Printf("authdir: skipping %s: %v", e.Name(), err)
+			continue
 		}
 		w.keys[string(pub)] = pub
 		count++
+	}
+	if count == 0 && len(seen) > 0 {
+		log.Printf("authdir: none of %d file(s) is a valid ed25519 public key: %s",
+			len(seen), strings.Join(seen, ", "))
 	}
 	return w, count, nil
 }

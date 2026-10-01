@@ -58,8 +58,10 @@ func main() {
 		fmt.Println("  private:", privPath)
 		fmt.Println("  public :", pubPath)
 		fmt.Println()
-		fmt.Println("Share the public key with the server (put it in the server's -authdir).")
-		fmt.Println("Keep the private key on the client. Never share it.")
+		fmt.Println("Run genkey on the CLIENT. Share the public key with the server:")
+		fmt.Println("copy public.pem into the server's -authdir (any filename works).")
+		fmt.Println("Keep the private key on the client. Never share it. The server")
+		fmt.Println("itself needs no keypair - it only holds client public keys.")
 
 	case "server":
 		fs := flag.NewFlagSet("server", flag.ExitOnError)

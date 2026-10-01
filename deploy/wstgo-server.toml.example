@@ -7,8 +7,9 @@ run_mode = "server"
 # WS 监听地址。前置 nginx 时保持 127.0.0.1（TLS 由 nginx 终结，推荐形态）；
 # 无 nginx 对外直连可改 "0.0.0.0:8888"（建议配合防火墙）
 bind = "127.0.0.1:8888"
-# 已授权客户端公钥目录（一个客户端一个 .pem，由 wstgo genkey 生成）
-auth_dir = "/etc/wstgo/server-keys"
+# 已授权客户端公钥目录：在客户端运行 wstgo genkey，把生成的 public.pem
+# 拷贝到此处（一个客户端一个文件，文件名随意；服务端不需要自己的密钥对）
+auth_dir = "/etc/wstgo/auth-keys"
 
 [server]
 # 每个条目 = 一条转发，注册在 /ws/<标签>；客户端 [client.*] 标签须与此一致

@@ -105,7 +105,8 @@ func runServerConfig(cfg *Config) {
 		log.Fatalf("load authdir %s: %v", cfg.General.AuthDir, err)
 	}
 	if n == 0 {
-		log.Fatalf("no public keys found in %s; refusing to start without authentication", cfg.General.AuthDir)
+		log.Fatalf("no authorized client public keys in %s; refusing to start without authentication\n"+
+			"  fix: run `wstgo genkey` on each CLIENT, then copy its public.pem into this dir (any filename works)", cfg.General.AuthDir)
 	}
 	log.Printf("loaded %d authorized public key(s) from %s", n, cfg.General.AuthDir)
 
@@ -247,7 +248,8 @@ func server(bindAddr, destAddr, authDir, tlsCert, tlsKey string) {
 		log.Fatalf("load authdir %s: %v", authDir, err)
 	}
 	if n == 0 {
-		log.Fatalf("no public keys found in %s; refusing to start without authentication", authDir)
+		log.Fatalf("no authorized client public keys in %s; refusing to start without authentication\n"+
+			"  fix: run `wstgo genkey` on each CLIENT, then copy its public.pem into this dir (any filename works)", authDir)
 	}
 	log.Printf("loaded %d authorized public key(s) from %s", n, authDir)
 

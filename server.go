@@ -4,8 +4,11 @@ import (
 	"context"
 	"io"
 	"log"
+	"maps"
 	"net"
 	"net/http"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -37,7 +40,7 @@ var upgrader = websocket.Upgrader{
 // 由 -v 命令行开关打开。
 var verbose bool
 
-// Server 是 wstunnel 服务端。
+// Server 是 wstunnel 服务端（CLI 单目标模式）。
 type Server struct {
 	DestAddress string
 	Whitelist   *publicKeyWhitelist
@@ -49,32 +52,38 @@ func (s *Server) handler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("upgrade from %s: %v", r.RemoteAddr, err)
 		return
 	}
+	serveTunnel(ws, s.Whitelist, s.DestAddress, "", r.RemoteAddr)
+}
+
+// serveTunnel 在已升级的 WS 连接上完成鉴权、拨号目标并桥接，任一步失败
+// 即关闭连接。label 为配置文件模式下的转发标签（CLI 模式为空），仅用于日志。
+func serveTunnel(ws *websocket.Conn, wl *publicKeyWhitelist, target, label, remoteAddr string) {
 	defer ws.Close()
 	// 鉴权握手前即生效：握手消息最长 97 字节，64KB 上限只拦异常大帧
 	ws.SetReadLimit(maxMessageSize)
 
 	// 1. 鉴权握手
-	pub, err := serverHandshake(ws, s.Whitelist)
+	pub, err := serverHandshake(ws, wl)
 	if err != nil {
 		fp := "unknown"
 		if pub != nil {
 			fp = publicKeyFingerprint(pub)
 		}
 		if ae, ok := err.(*authError); ok {
-			log.Printf("auth failed from %s (%s): %s", r.RemoteAddr, fp, ae.reason)
+			log.Printf("auth failed from %s (%s): %s", remoteAddr, fp, ae.reason)
 			sendAuthFail(ws, ae.reason)
 		} else {
-			log.Printf("auth error from %s (%s): %v", r.RemoteAddr, fp, err)
+			log.Printf("auth error from %s (%s): %v", remoteAddr, fp, err)
 		}
 		return
 	}
-	log.Printf("tunnel established: %s <-> %s (client=%s)",
-		r.RemoteAddr, s.DestAddress, publicKeyFingerprint(pub))
+	log.Printf("tunnel established: %s <-> %s%s (client=%s)",
+		remoteAddr, target, labelSuffix(label), publicKeyFingerprint(pub))
 
 	// 2. 拨号目标 TCP
-	tcp, err := (&net.Dialer{Timeout: targetDialTimeout}).Dial("tcp", s.DestAddress)
+	tcp, err := (&net.Dialer{Timeout: targetDialTimeout}).Dial("tcp", target)
 	if err != nil {
-		log.Printf("dial target %s: %v", s.DestAddress, err)
+		log.Printf("dial target %s: %v", target, err)
 		return
 	}
 	defer tcp.Close()
@@ -83,9 +92,57 @@ func (s *Server) handler(w http.ResponseWriter, r *http.Request) {
 	installHeartbeat(ws)
 
 	// 4. 双向桥接
-	bridge(ws, tcp, true) // true: server 端，关闭时主动断 TCP
-	log.Printf("tunnel closed: %s <-> %s (client=%s)",
-		r.RemoteAddr, s.DestAddress, publicKeyFingerprint(pub))
+	bridge(ws, tcp, true, labelSuffix(label)) // true: server 端，关闭时主动断 TCP
+	log.Printf("tunnel closed: %s <-> %s%s (client=%s)",
+		remoteAddr, target, labelSuffix(label), publicKeyFingerprint(pub))
+}
+
+// runServerConfig 以配置文件模式启动服务端：每个 [server.<label>] 转发
+// 注册在 /ws/<label> 路径下，鉴权白名单全局共享。
+func runServerConfig(cfg *Config) {
+	wl, n, err := loadWhitelistFromDir(cfg.General.AuthDir)
+	if err != nil {
+		log.Fatalf("load authdir %s: %v", cfg.General.AuthDir, err)
+	}
+	if n == 0 {
+		log.Fatalf("no public keys found in %s; refusing to start without authentication", cfg.General.AuthDir)
+	}
+	log.Printf("loaded %d authorized public key(s) from %s", n, cfg.General.AuthDir)
+
+	forwards := cfg.Server
+	mux := http.NewServeMux()
+	// 裸 /ws 在配置模式下没有对应转发，显式 404（避免 ServeMux 307 重定向）。
+	// 客户端连 <url>/<label>，漏掉标签时会在这里得到明确提示。
+	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("request to /ws without forward label from %s (expected /ws/<label>)", r.RemoteAddr)
+		http.NotFound(w, r)
+	})
+	mux.HandleFunc("/ws/", func(w http.ResponseWriter, r *http.Request) {
+		name := strings.TrimPrefix(r.URL.Path, "/ws/")
+		if name == "" || strings.Contains(name, "/") {
+			http.NotFound(w, r)
+			return
+		}
+		fwd, ok := forwards[name]
+		if !ok {
+			log.Printf("unknown forward %q requested from %s", name, r.RemoteAddr)
+			http.NotFound(w, r)
+			return
+		}
+		ws, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			log.Printf("upgrade from %s: %v", r.RemoteAddr, err)
+			return
+		}
+		serveTunnel(ws, wl, fwd.Target, name, r.RemoteAddr)
+	})
+
+	log.Printf("wstunnel server listening on %s, %d forward(s):", cfg.General.Bind, len(forwards))
+	for _, name := range slices.Sorted(maps.Keys(forwards)) {
+		f := forwards[name]
+		log.Printf("  /ws/%s -> %s (type=%s)", name, f.Target, typeNameOrGeneric(f.Type))
+	}
+	log.Fatal(http.ListenAndServe(cfg.General.Bind, mux))
 }
 
 // installHeartbeat 为 WS 连接安装心跳处理：
@@ -107,8 +164,8 @@ func installHeartbeat(ws *websocket.Conn) {
 
 // bridge 在 WS 与 TCP 之间双向转发数据。
 // 鉴权已完成，所有 BinaryMessage 的 payload 即为 TCP 字节。
-// 任一方向出错即关闭两端。
-func bridge(ws *websocket.Conn, tcp net.Conn, serverSide bool) {
+// tag 为日志后缀（如 " [pg1]"，CLI 模式为空串）。任一方向出错即关闭两端。
+func bridge(ws *websocket.Conn, tcp net.Conn, serverSide bool, tag string) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -130,18 +187,18 @@ func bridge(ws *websocket.Conn, tcp net.Conn, serverSide bool) {
 				werr := ws.WriteMessage(websocket.BinaryMessage, buf[:n])
 				writeMu.Unlock()
 				if werr != nil {
-					log.Printf("%s write err: %v", dir1, werr)
+					log.Printf("%s%s write err: %v", dir1, tag, werr)
 					cancel()
 					tcp.Close()
 					return
 				}
 				if verbose {
-					log.Printf("%s %d", dir1, n)
+					log.Printf("%s%s %d", dir1, tag, n)
 				}
 			}
 			if err != nil {
 				if err != io.EOF {
-					log.Printf("%s read err: %v", dir1, err)
+					log.Printf("%s%s read err: %v", dir1, tag, err)
 				}
 				cancel()
 				tcp.Close()
@@ -161,20 +218,20 @@ func bridge(ws *websocket.Conn, tcp net.Conn, serverSide bool) {
 		_, buf, err := ws.ReadMessage()
 		if err != nil {
 			if !websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
-				log.Printf("%s read err: %v", dir2, err)
+				log.Printf("%s%s read err: %v", dir2, tag, err)
 			}
 			cancel()
 			ws.Close()
 			return
 		}
 		if _, err := tcp.Write(buf); err != nil {
-			log.Printf("%s write err: %v", dir2, err)
+			log.Printf("%s%s write err: %v", dir2, tag, err)
 			cancel()
 			ws.Close()
 			return
 		}
 		if verbose {
-			log.Printf("%s %d", dir2, len(buf))
+			log.Printf("%s%s %d", dir2, tag, len(buf))
 		}
 	}
 }

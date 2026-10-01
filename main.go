@@ -17,15 +17,18 @@ func usage() {
 	fmt.Fprintln(os.Stderr, "  wstunnel genkey  -dir <dir>")
 	fmt.Fprintln(os.Stderr, "  wstunnel server  -bind <addr> -target <addr> -authdir <dir> [-tlscert <crt> -tlskey <key>] [-v]")
 	fmt.Fprintln(os.Stderr, "  wstunnel client  -bind <addr> -url <(ws|wss)://...> -key <private.pem> [-v] [-insecure]")
+	fmt.Fprintln(os.Stderr, "  wstunnel run     -config <wstunnel.toml> [-v]   (multi-port forwarding)")
 	fmt.Fprintln(os.Stderr, "")
 	fmt.Fprintln(os.Stderr, "Subcommands:")
 	fmt.Fprintln(os.Stderr, "  genkey   Generate an ed25519 keypair into -dir (private.pem + public.pem).")
-	fmt.Fprintln(os.Stderr, "  server   Run tunnel server: accepts WS/WSS on -bind, forwards TCP to -target,")
-	fmt.Fprintln(os.Stderr, "           authorizes clients whose public keys are in -authdir/*.pem.")
+	fmt.Fprintln(os.Stderr, "  server   Run tunnel server (single target): accepts WS/WSS on -bind, forwards TCP")
+	fmt.Fprintln(os.Stderr, "           to -target, authorizes clients whose public keys are in -authdir/*.pem.")
 	fmt.Fprintln(os.Stderr, "           Native wss:// is opt-in: pass both -tlscert and -tlskey.")
-	fmt.Fprintln(os.Stderr, "  client   Run tunnel client: listens TCP on -bind, forwards via WS -url,")
-	fmt.Fprintln(os.Stderr, "           authenticates with -key private key.")
+	fmt.Fprintln(os.Stderr, "  client   Run tunnel client (single target): listens TCP on -bind, forwards via WS")
+	fmt.Fprintln(os.Stderr, "           -url, authenticates with -key private key.")
 	fmt.Fprintln(os.Stderr, "           Use -insecure with wss:// to skip TLS cert verification (self-signed).")
+	fmt.Fprintln(os.Stderr, "  run      Run from a TOML config file: one process forwards multiple ports,")
+	fmt.Fprintln(os.Stderr, "           routed by label as /ws/<label>; `wstunnel -config <file>` is a shorthand.")
 	fmt.Fprintln(os.Stderr, "")
 	fmt.Fprintln(os.Stderr, "Common flags:")
 	fmt.Fprintln(os.Stderr, "  -v       Verbose: log per-byte traffic direction (off by default).")
@@ -88,6 +91,23 @@ func main() {
 			os.Exit(2)
 		}
 		client(*bind, *url, *keyPath, *insecure)
+
+	case "run", "-config", "--config":
+		// run -config <file>；裸 -config <file> 为等价简写
+		args := os.Args[2:]
+		if os.Args[1] != "run" {
+			args = os.Args[1:]
+		}
+		fs := flag.NewFlagSet("run", flag.ExitOnError)
+		configPath := fs.String("config", "", "path to wstunnel.toml")
+		v := fs.Bool("v", false, "verbose: log per-byte traffic direction (with forward labels)")
+		_ = fs.Parse(args)
+		verbose = *v
+		if *configPath == "" {
+			fmt.Fprintln(os.Stderr, "run: -config is required")
+			os.Exit(2)
+		}
+		runConfig(*configPath)
 
 	case "-h", "--help", "help":
 		usage()

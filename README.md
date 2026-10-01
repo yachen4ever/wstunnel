@@ -146,6 +146,63 @@ Host myvps
 
 其中 `ServerAliveInterval/ServerAliveCountMax` 是 SSH 自身的死连接感知，与隧道层互为双保险：wstunnel 每 10s 发心跳、30s 判死后会主动关闭本地 TCP，SSH 随即看到断开；SSH 层这两行让 ssh 在隧道未及时关闭时也能自行放弃。两层独立计时，先超时者先断开，终端不会无限冻结。scp/rsync 走同一隧道时自动受益于 32KB 缓冲，大文件吞吐与击键级小包互不影响。
 
+## 配置文件：多端口转发
+
+CLI 子命令（`server`/`client`）一次只能转发一个目标。需要单进程转发多个端口时用 `run -config` 读 TOML 配置，服务端与客户端各一份，靠**标签**互相对应：每个 `[server.<label>]` 注册在服务端 `/ws/<label>` 路径下，客户端 `[client.<label>]` 连接 `<general.url>/<label>`，同名即同一条隧道。
+
+服务端配置（`server.toml`）：
+
+```toml
+[general]
+run_mode = "server"
+bind = "0.0.0.0:8888"            # WS 监听地址
+auth_dir = "/etc/wst/server-keys"
+
+[server]
+[server.ssh1]
+target = "127.0.0.1:22"
+type = "ssh"
+[server.pg1]
+target = "127.0.0.1:5432"
+type = "db"
+[server.pg2]
+target = "192.168.5.11:5432"
+type = "db"
+```
+
+客户端配置（`client.toml`）：
+
+```toml
+[general]
+run_mode = "client"
+url = "wss://tunnel.example.com/ws"   # 基础路径，实际连接 <url>/<label>
+key = "/etc/wst/client/private.pem"
+allow_insecure = false                # wss + 自签名证书时置 true
+
+[client]
+[client.ssh1]
+bind = "127.0.0.1:50022"
+[client.pg1]
+bind = "127.0.0.1:55432"
+[client.pg2]
+bind = "127.0.0.1:55433"
+```
+
+运行（`wstunnel -config <file>` 是 `run -config` 的等价简写）：
+
+```
+wstunnel run -config server.toml
+wstunnel run -config client.toml
+```
+
+规则与说明：
+
+- **标签**只允许字母、数字、`-`、`_`（它要作为 URL 路径段）。两端标签必须一致：不一致时服务端返回 404，客户端**立即报错不重试**，日志会提示检查 `[server.*]` 配置。
+- **`type`** 目前支持 `ssh` / `db`，留空为 generic：用于配置校验（防 typo）与日志标识（每条隧道的日志都带 `[标签]` 后缀）。当前两类传输参数一致——32KB 缓冲、10s·30s 心跳、no-delay 对交互与吞吐均已最优，字段为将来按类型分化预留。
+- 服务端所有转发共享同一份公钥白名单，未授权连接在鉴权阶段即被拒。
+- 客户端先绑定全部本地端口再开始服务，任一端口被占用则整体退出（fail fast）；SIGINT/SIGTERM 关闭监听后退出。
+- 经 nginx 反代时无需额外配置：`location /ws` 前缀匹配自动覆盖 `/ws/<label>`。
+
 ## 鉴权协议
 
 握手在 WebSocket 建立后、数据转发前进行。所有握手帧都是 `BinaryMessage`，首字节为类型标识；握手通过后，后续所有 `BinaryMessage` 的 payload 都是纯 TCP 字节（无前缀、零开销）。
@@ -170,7 +227,8 @@ server -> client : [0x03]                              // 通过，进入数据�
 
 ## 文件结构
 
-- `main.go`    命令行入口（子命令：`genkey`、`server`、`client`）
+- `main.go`    命令行入口（子命令：`genkey`、`server`、`client`、`run`）
+- `config.go`  TOML 配置文件的加载与校验（`run` 多端口转发模式）
 - `keys.go`    密钥对的生成、加载与白名单管理
 - `auth.go`    挑战-响应握手协议
 - `server.go`  服务端：HTTP 升级 + 鉴权 + TCP 拨号 + 桥接 + 心跳
@@ -307,7 +365,7 @@ sudo systemctl enable --now wstunnel-server
 ## 已知限制
 
 - TLS 可选而非强制：`-tlscert/-tlskey` 开启原生 `wss://`，默认关闭（明文 `ws://`）。生产环境要么开原生 TLS，要么用反向代理（nginx、Caddy）在前端终止 `wss://`。
-- **单进程单目标**：一个 server 进程的 `-target` 在启动时固定，只能转发到唯一一个 TCP 服务。想同时转发多个服务（比如 SSH 和 RDP），需要起多个 server 进程，各绑不同端口、各指向自己的 `-target`。客户端同理，一个 client 进程只连一个 `-url`。
+- **CLI 子命令单目标**：`server`/`client` 子命令一次只转发一个目标（保留给最简单的单隧道场景）。多端口转发用配置文件模式 `wstunnel run -config <file>`，单进程多转发，见「配置文件：多端口转发」一节。
 - **不做连接多路复用**：client 端每接受一个本地 TCP 连接，都会向 server 新拨一条独立 WebSocket，而不是把多条 TCP 流复用到同一条 WS 上。10 个本地连接 = 10 条 WS 连接。并发本身不受限（每条连接在独立 goroutine 中处理），但连接数较多时 WS 握手开销会比多路复用方案高。
 
 ## 致谢

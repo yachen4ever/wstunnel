@@ -121,6 +121,31 @@ wstunnel client -bind 127.0.0.1:25565 -url ws://server:8888/ws -key ./private.pe
 
 客户端主机上任何 TCP 客户端访问 `127.0.0.1:25565`，流量都会被隧穿到服务端的 `-target` 地址。例如远端有 SSH 服务在 wstunnel 后面，`ssh -p 25565 user@127.0.0.1` 就像 SSH 服务在本地一样。
 
+### 5. 场景示例：穿透 SSH
+
+服务端把 `-target` 指向本机 sshd，客户端本地监听一个端口：
+
+```
+# 服务端
+wstunnel server -bind 0.0.0.0:8888 -target 127.0.0.1:22 -authdir ./server-keys
+
+# 客户端
+wstunnel client -bind 127.0.0.1:2222 -url wss://tunnel.example.com/ws -key ./private.pem
+```
+
+之后 `ssh -p 2222 user@127.0.0.1` 即可，体验与直连无异（延迟 = 物理链路 RTT + 少量隧道开销）。推荐写进 `~/.ssh/config`：
+
+```
+Host myvps
+    HostName 127.0.0.1
+    Port 2222
+    User yourname
+    ServerAliveInterval 15
+    ServerAliveCountMax 3
+```
+
+其中 `ServerAliveInterval/ServerAliveCountMax` 是 SSH 自身的死连接感知，与隧道层互为双保险：wstunnel 每 10s 发心跳、30s 判死后会主动关闭本地 TCP，SSH 随即看到断开；SSH 层这两行让 ssh 在隧道未及时关闭时也能自行放弃。两层独立计时，先超时者先断开，终端不会无限冻结。scp/rsync 走同一隧道时自动受益于 32KB 缓冲，大文件吞吐与击键级小包互不影响。
+
 ## 鉴权协议
 
 握手在 WebSocket 建立后、数据转发前进行。所有握手帧都是 `BinaryMessage`，首字节为类型标识；握手通过后，后续所有 `BinaryMessage` 的 payload 都是纯 TCP 字节（无前缀、零开销）。

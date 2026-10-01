@@ -1,4 +1,4 @@
-# wstunnel
+# wstgo
 
 基于 WebSocket 的 TCP 隧道，使用 ed25519 挑战-响应进行身份认证。
 
@@ -7,7 +7,7 @@
  |
  |  <= TCP
  |
-[wstunnel server]   <- 持有已授权客户端的公钥
+[wstgo server]   <- 持有已授权客户端的公钥
  ||
  || <= WebSocket（ed25519 鉴权）
  ||
@@ -15,7 +15,7 @@
  ||
  || <= WebSocket
  ||
-[wstunnel client]   <- 持有匹配的私钥
+[wstgo client]   <- 持有匹配的私钥
  |
  | <= TCP
  |
@@ -29,7 +29,7 @@
 - **服务端公钥白名单**：每个授权客户端放一个 `.pem` 公钥文件到鉴权目录；未授权的密钥在数据发送前就被拒绝。
 - **心跳保活**：客户端每 10 秒发送 WebSocket Ping，双方在收到任意 Ping/Pong 时续约读超时（30 秒无消息即断开），能穿过反向代理的空闲断连策略；DB 等场景下隧道故障会快速暴露给应用，便于连接池及时重连。
 - **指数退避重连**：客户端 WS 拨号失败时按 1s→2s→4s→8s→16s（上限 30s）退避重试，最多 5 次。
-- **原生 wss 可选**：`-tlscert/-tlskey` 让 wstunnel 自身终结 TLS，无需前置反代即可对外提供 `wss://`；默认关闭，保持「nginx 终止 TLS」的推荐形态不变。
+- **原生 wss 可选**：`-tlscert/-tlskey` 让 wstgo 自身终结 TLS，无需前置反代即可对外提供 `wss://`；默认关闭，保持「nginx 终止 TLS」的推荐形态不变。
 - **安全默认**：服务端在未配置任何授权公钥时拒绝启动——不存在"无鉴权"模式。
 
 ## 编译
@@ -37,7 +37,7 @@
 ### 当前平台
 
 ```
-go build -o wstunnel .
+go build -o wstgo .
 ```
 
 需要 Go 1.21+（已在 Go 1.26.5 下测试）。仅依赖 `github.com/gorilla/websocket`。
@@ -48,12 +48,12 @@ go build -o wstunnel .
 
 | 平台 | 文件 |
 |------|------|
-| Linux amd64 | `binaries/wstunnel-linux-amd64` |
-| Linux arm64 | `binaries/wstunnel-linux-arm64` |
-| Linux armhf（32 位 ARMv6/v7，树莓派等） | `binaries/wstunnel-linux-armhf` |
-| Windows amd64 | `binaries/wstunnel-windows-amd64.exe` |
-| macOS arm64 (Apple Silicon) | `binaries/wstunnel-darwin-arm64` |
-| macOS amd64 (Intel) | `binaries/wstunnel-darwin-amd64` |
+| Linux amd64 | `binaries/wstgo-linux-amd64` |
+| Linux arm64 | `binaries/wstgo-linux-arm64` |
+| Linux armhf（32 位 ARMv6/v7，树莓派等） | `binaries/wstgo-linux-armhf` |
+| Windows amd64 | `binaries/wstgo-windows-amd64.exe` |
+| macOS arm64 (Apple Silicon) | `binaries/wstgo-darwin-arm64` |
+| macOS amd64 (Intel) | `binaries/wstgo-darwin-amd64` |
 
 ```
 # macOS / Linux
@@ -65,7 +65,7 @@ go build -o wstunnel .
 .\crossbuild.ps1 -Clean    # 清理 binaries\
 ```
 
-脚本会从 `git describe --tags --always` 读取版本号，通过 `-ldflags` 注入到 `main.version`，可用 `wstunnel version` 查看。`-trimpath -s -w` 去掉本地路径和调试符号，产物更小。`CGO_ENABLED=0` 保证纯静态、跨容器/跨发行版可用。
+脚本会从 `git describe --tags --always` 读取版本号，通过 `-ldflags` 注入到 `main.version`，可用 `wstgo version` 查看。`-trimpath -s -w` 去掉本地路径和调试符号，产物更小。`CGO_ENABLED=0` 保证纯静态、跨容器/跨发行版可用。
 
 GitHub Actions 在每次 push 到 `master` 和打 tag 时会自动跑这套脚本（见 `.github/workflows/`）。
 
@@ -76,7 +76,7 @@ GitHub Actions 在每次 push 到 `master` 和打 tag 时会自动跑这套脚�
 客户端保留 `private.pem`，服务端需要 `public.pem`。
 
 ```
-wstunnel genkey -dir ./keys
+wstgo genkey -dir ./keys
 ```
 
 该命令会在 `./keys/` 下生成 `private.pem` 和 `public.pem`。
@@ -86,28 +86,28 @@ wstunnel genkey -dir ./keys
 把每个已授权客户端的 `public.pem` 放进一个目录（一个客户端一个文件，文件名随意，只看 `.pem` 后缀）。
 
 ```
-wstunnel server -bind 0.0.0.0:8888 -target 127.0.0.1:25565 -authdir ./server-keys
+wstgo server -bind 0.0.0.0:8888 -target 127.0.0.1:25565 -authdir ./server-keys
 ```
 
 参数：
 - `-bind`    监听 WebSocket 的地址（默认 `0.0.0.0:8888`）
 - `-target`  要转发到的目标 TCP 服务地址（必填）
 - `-authdir` 存放已授权 `*.pem` 公钥的目录（必填）
-- `-tlscert` / `-tlskey` 两者同时提供时启用**原生 `wss://`**（TLS 由 wstunnel 自身终结）；默认不提供，监听明文 `ws://`
+- `-tlscert` / `-tlskey` 两者同时提供时启用**原生 `wss://`**（TLS 由 wstgo 自身终结）；默认不提供，监听明文 `ws://`
 - `-v`       打印每个字节方向的流量日志（默认关闭，详见下文「日志」一节）
 
-需要原生 `wss://`（不前置 nginx 的场景，例如 nginx 与 wstunnel 不同机）时：
+需要原生 `wss://`（不前置 nginx 的场景，例如 nginx 与 wstgo 不同机）时：
 
 ```
-wstunnel server -bind 0.0.0.0:8888 -target 127.0.0.1:25565 -authdir ./server-keys -tlscert ./tls.crt -tlskey ./tls.key
+wstgo server -bind 0.0.0.0:8888 -target 127.0.0.1:25565 -authdir ./server-keys -tlscert ./tls.crt -tlskey ./tls.key
 ```
 
-客户端照常传 `-url wss://...` 即可；自签名证书配合 `-insecure` 或给客户端导入 CA（见下文「自签名证书与 `-insecure` 参数」）。nginx 与 wstunnel 同机时，推荐维持「nginx 终止 TLS + wstunnel 明文 ws」的默认形态，两者职责最简单。
+客户端照常传 `-url wss://...` 即可；自签名证书配合 `-insecure` 或给客户端导入 CA（见下文「自签名证书与 `-insecure` 参数」）。nginx 与 wstgo 同机时，推荐维持「nginx 终止 TLS + wstgo 明文 ws」的默认形态，两者职责最简单。
 
 ### 3. 启动客户端
 
 ```
-wstunnel client -bind 127.0.0.1:25565 -url ws://server:8888/ws -key ./private.pem
+wstgo client -bind 127.0.0.1:25565 -url ws://server:8888/ws -key ./private.pem
 ```
 
 参数：
@@ -119,7 +119,7 @@ wstunnel client -bind 127.0.0.1:25565 -url ws://server:8888/ws -key ./private.pe
 
 ### 4. 连接使用
 
-客户端主机上任何 TCP 客户端访问 `127.0.0.1:25565`，流量都会被隧穿到服务端的 `-target` 地址。例如远端有 SSH 服务在 wstunnel 后面，`ssh -p 25565 user@127.0.0.1` 就像 SSH 服务在本地一样。
+客户端主机上任何 TCP 客户端访问 `127.0.0.1:25565`，流量都会被隧穿到服务端的 `-target` 地址。例如远端有 SSH 服务在 wstgo 后面，`ssh -p 25565 user@127.0.0.1` 就像 SSH 服务在本地一样。
 
 ### 5. 场景示例：穿透 SSH
 
@@ -127,10 +127,10 @@ wstunnel client -bind 127.0.0.1:25565 -url ws://server:8888/ws -key ./private.pe
 
 ```
 # 服务端
-wstunnel server -bind 0.0.0.0:8888 -target 127.0.0.1:22 -authdir ./server-keys
+wstgo server -bind 0.0.0.0:8888 -target 127.0.0.1:22 -authdir ./server-keys
 
 # 客户端
-wstunnel client -bind 127.0.0.1:2222 -url wss://tunnel.example.com/ws -key ./private.pem
+wstgo client -bind 127.0.0.1:2222 -url wss://tunnel.example.com/ws -key ./private.pem
 ```
 
 之后 `ssh -p 2222 user@127.0.0.1` 即可，体验与直连无异（延迟 = 物理链路 RTT + 少量隧道开销）。推荐写进 `~/.ssh/config`：
@@ -144,7 +144,7 @@ Host myvps
     ServerAliveCountMax 3
 ```
 
-其中 `ServerAliveInterval/ServerAliveCountMax` 是 SSH 自身的死连接感知，与隧道层互为双保险：wstunnel 每 10s 发心跳、30s 判死后会主动关闭本地 TCP，SSH 随即看到断开；SSH 层这两行让 ssh 在隧道未及时关闭时也能自行放弃。两层独立计时，先超时者先断开，终端不会无限冻结。scp/rsync 走同一隧道时自动受益于 32KB 缓冲，大文件吞吐与击键级小包互不影响。
+其中 `ServerAliveInterval/ServerAliveCountMax` 是 SSH 自身的死连接感知，与隧道层互为双保险：wstgo 每 10s 发心跳、30s 判死后会主动关闭本地 TCP，SSH 随即看到断开；SSH 层这两行让 ssh 在隧道未及时关闭时也能自行放弃。两层独立计时，先超时者先断开，终端不会无限冻结。scp/rsync 走同一隧道时自动受益于 32KB 缓冲，大文件吞吐与击键级小包互不影响。
 
 ## 配置文件：多端口转发
 
@@ -188,11 +188,11 @@ bind = "127.0.0.1:55432"
 bind = "127.0.0.1:55433"
 ```
 
-运行（`wstunnel -config <file>` 是 `run -config` 的等价简写）：
+运行（`wstgo -config <file>` 是 `run -config` 的等价简写）：
 
 ```
-wstunnel run -config server.toml
-wstunnel run -config client.toml
+wstgo run -config server.toml
+wstgo run -config client.toml
 ```
 
 规则与说明：
@@ -244,7 +244,7 @@ server -> client : [0x03]                              // 通过，进入数据�
 
 示例（默认）：
 ```
-2026/07/19 01:49:11 wstunnel server listening on 0.0.0.0:8888, forwarding to 127.0.0.1:25565
+2026/07/19 01:49:11 wstgo server listening on 0.0.0.0:8888, forwarding to 127.0.0.1:25565
 2026/07/19 01:49:38 tunnel established: 1.2.3.4:54321 <-> 127.0.0.1:25565 (client=ed25519:C2F2522C)
 2026/07/19 01:49:58 tunnel closed: 1.2.3.4:54321 <-> 127.0.0.1:25565 (client=ed25519:C2F2522C)
 ```
@@ -257,11 +257,11 @@ server -> client : [0x03]                              // 通过，进入数据�
 
 ## 部署：nginx 反向代理
 
-wstunnel 不内置 TLS，生产环境建议在前端放 nginx 终止 `wss://`。配置时有几个关键的坑要注意。
+wstgo 不内置 TLS，生产环境建议在前端放 nginx 终止 `wss://`。配置时有几个关键的坑要注意。
 
 ### 必须的三件套
 
-WebSocket 握手是 HTTP/1.1 的 `Upgrade` 机制，nginx 默认用 HTTP/1.0 代理后端，不传 Upgrade 头，wstunnel 收不到握手就会直接断。这三行**缺一不可**：
+WebSocket 握手是 HTTP/1.1 的 `Upgrade` 机制，nginx 默认用 HTTP/1.0 代理后端，不传 Upgrade 头，wstgo 收不到握手就会直接断。这三行**缺一不可**：
 
 ```nginx
 proxy_http_version 1.1;
@@ -271,7 +271,7 @@ proxy_set_header Connection "upgrade";
 
 ### 超时配合心跳
 
-wstunnel 的心跳参数：client 每 10s 发 Ping，双方读超时 30s。
+wstgo 的心跳参数：client 每 10s 发 Ping，双方读超时 30s。
 
 nginx 默认 `proxy_read_timeout 60s` 偏短——虽然 WS 握手后 nginx 是透传，Ping/Pong 帧会续约 nginx 超时，但建议调大到 120s，留一次心跳丢失的余量：
 
@@ -280,7 +280,7 @@ proxy_read_timeout 120s;
 proxy_send_timeout 120s;
 ```
 
-记住一条规则：**nginx 读超时 > wstunnel 读超时 > 2 × 心跳间隔**。当前 120 > 30 > 20，成立（nginx 读超时最低建议 45s，120s 余量更足）。
+记住一条规则：**nginx 读超时 > wstgo 读超时 > 2 × 心跳间隔**。当前 120 > 30 > 20，成立（nginx 读超时最低建议 45s，120s 余量更足）。
 
 ### 关掉 buffering
 
@@ -308,7 +308,7 @@ server {
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
 
-        # 超时配合 wstunnel 心跳
+        # 超时配合 wstgo 心跳
         proxy_read_timeout 120s;
         proxy_send_timeout 120s;
 
@@ -323,23 +323,23 @@ server {
 }
 ```
 
-客户端连接：`wstunnel client -url wss://tunnel.example.com/ws -key ./private.pem ...`
+客户端连接：`wstgo client -url wss://tunnel.example.com/ws -key ./private.pem ...`
 
 ### 注意事项
 
-- **路径必须对上**：wstunnel server 只注册了 `/ws` 路径，nginx 的 `location` 要和它一致，否则会 404。
-- **日志里的 client IP 是 nginx 的**：经反代后 wstunnel 看到的 `r.RemoteAddr` 是 `127.0.0.1`。nginx 配的 `X-Real-IP` / `X-Forwarded-For` 头可用于审计（当前 wstunnel 尚未读取这些头）。
-- **慎用 Cloudflare 等 CDN**：免费版对 WS 有空闲断连限制且会限制子协议，wstunnel 走 CDN 多半不行，建议直连或自建反代。
+- **路径必须对上**：wstgo server 只注册了 `/ws` 路径，nginx 的 `location` 要和它一致，否则会 404。
+- **日志里的 client IP 是 nginx 的**：经反代后 wstgo 看到的 `r.RemoteAddr` 是 `127.0.0.1`。nginx 配的 `X-Real-IP` / `X-Forwarded-For` 头可用于审计（当前 wstgo 尚未读取这些头）。
+- **慎用 Cloudflare 等 CDN**：免费版对 WS 有空闲断连限制且会限制子协议，wstgo 走 CDN 多半不行，建议直连或自建反代。
 
 ### 自签名证书与 `-insecure` 参数
 
-当 TLS 由 nginx 终止、或由 wstunnel 原生提供（`-tlscert/-tlskey`），且证书为自签名（内网无域名、无公共 CA 场景）时，wstunnel 客户端走 Go 标准 TLS 校验会因证书链不受信任而拨号失败（报 `x509: certificate signed by unknown authority`）。
+当 TLS 由 nginx 终止、或由 wstgo 原生提供（`-tlscert/-tlskey`），且证书为自签名（内网无域名、无公共 CA 场景）时，wstgo 客户端走 Go 标准 TLS 校验会因证书链不受信任而拨号失败（报 `x509: certificate signed by unknown authority`）。
 
 有两种解决方式：
 
 1. **`-insecure` 参数（零客户端配置）**：拨号时跳过 TLS 证书验证。适合客户端机器不便导入 CA 证书的场景。
    ```bash
-   wstunnel client -url wss://tunnel.example.com/ws -key ./private.pem -insecure
+   wstgo client -url wss://tunnel.example.com/ws -key ./private.pem -insecure
    ```
    仅跳过 TLS 层证书校验，WebSocket 之上的 ed25519 鉴权照常进行，安全性由挑战-响应保证。
 
@@ -352,20 +352,20 @@ server {
 长期运行建议用 systemd 托管，崩溃/重启后 3 秒内自动拉起。`deploy/` 下有 server / client 各一份单元示例：
 
 ```
-sudo cp binaries/wstunnel-linux-amd64 /usr/local/bin/wstunnel
-sudo mkdir -p /etc/wstunnel
-sudo cp deploy/wstunnel-server.service /etc/systemd/system/
+sudo cp binaries/wstgo-linux-amd64 /usr/local/bin/wstgo
+sudo mkdir -p /etc/wstgo
+sudo cp deploy/wstgo-server.service /etc/systemd/system/
 # 按需修改 ExecStart 中的 -bind/-target/-authdir 等参数
 sudo systemctl daemon-reload
-sudo systemctl enable --now wstunnel-server
+sudo systemctl enable --now wstgo-server
 ```
 
-单元内置 `Restart=always` 与基础安全加固（文件系统只读、禁止提权），客户端同理安装 `wstunnel-client.service`。日志用 `journalctl -u wstunnel-server -f` 查看。
+单元内置 `Restart=always` 与基础安全加固（文件系统只读、禁止提权），客户端同理安装 `wstgo-client.service`。日志用 `journalctl -u wstgo-server -f` 查看。
 
 ## 已知限制
 
 - TLS 可选而非强制：`-tlscert/-tlskey` 开启原生 `wss://`，默认关闭（明文 `ws://`）。生产环境要么开原生 TLS，要么用反向代理（nginx、Caddy）在前端终止 `wss://`。
-- **CLI 子命令单目标**：`server`/`client` 子命令一次只转发一个目标（保留给最简单的单隧道场景）。多端口转发用配置文件模式 `wstunnel run -config <file>`，单进程多转发，见「配置文件：多端口转发」一节。
+- **CLI 子命令单目标**：`server`/`client` 子命令一次只转发一个目标（保留给最简单的单隧道场景）。多端口转发用配置文件模式 `wstgo run -config <file>`，单进程多转发，见「配置文件：多端口转发」一节。
 - **不做连接多路复用**：client 端每接受一个本地 TCP 连接，都会向 server 新拨一条独立 WebSocket，而不是把多条 TCP 流复用到同一条 WS 上。10 个本地连接 = 10 条 WS 连接。并发本身不受限（每条连接在独立 goroutine 中处理），但连接数较多时 WS 握手开销会比多路复用方案高。
 
 ## 致谢

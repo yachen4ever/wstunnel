@@ -1,5 +1,5 @@
 #!/bin/sh
-# crossbuild.sh - 交叉编译 wstunnel 到 6 个平台目标。
+# crossbuild.sh - 交叉编译 wstgo 到 6 个平台目标。
 #
 # 用法:
 #   ./crossbuild.sh              # 编译全部目标
@@ -37,7 +37,7 @@ if [ "$1" = "clean" ]; then
     exit 0
 fi
 
-echo "== building wstunnel ${VERSION} =="
+echo "== building wstgo ${VERSION} =="
 printf "%s\n" "$TARGETS" | grep -v '^$' | while IFS=/ read -r GOOS GOARCH NAME GOARM; do
     [ -z "$GOOS" ] && continue
     # 扩展名: Windows 用 .exe，其余无；输出名: 第三段（armhf），缺省用 GOARCH
@@ -46,7 +46,7 @@ printf "%s\n" "$TARGETS" | grep -v '^$' | while IFS=/ read -r GOOS GOARCH NAME G
         *)       EXT="" ;;
     esac
     NAME="${NAME:-$GOARCH}"
-    OUT="${OUT_DIR}/wstunnel-${GOOS}-${NAME}${EXT}"
+    OUT="${OUT_DIR}/wstgo-${GOOS}-${NAME}${EXT}"
 
     echo "--> ${GOOS}/${GOARCH}${GOARM:+ (GOARM=$GOARM)} -> ${OUT}"
     if [ -n "$GOARM" ]; then

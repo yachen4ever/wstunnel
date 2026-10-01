@@ -179,7 +179,7 @@ func client(bindAddr, websocketURL, keyPath string, insecure bool) {
 	if err != nil {
 		log.Fatalf("listen %s: %v", bindAddr, err)
 	}
-	log.Printf("wstunnel client listening on %s, forwarding to %s", bindAddr, websocketURL)
+	log.Printf("wstgo client listening on %s, forwarding to %s", bindAddr, websocketURL)
 
 	for {
 		tcp, err := listener.Accept()

@@ -1,4 +1,4 @@
-module github.com/yachen4ever/wstunnel
+module github.com/yachen4ever/wstgo
 
 go 1.26
 

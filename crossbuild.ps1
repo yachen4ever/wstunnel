@@ -1,4 +1,4 @@
-# crossbuild.ps1 - 交叉编译 wstunnel 到 6 个平台目标。
+# crossbuild.ps1 - 交叉编译 wstgo 到 6 个平台目标。
 #
 # 用法:
 #   .\crossbuild.ps1              # 编译全部目标
@@ -43,12 +43,12 @@ if (-not (Test-Path $OutDir)) {
     New-Item -ItemType Directory -Path $OutDir | Out-Null
 }
 
-Write-Host "== building wstunnel $Version =="
+Write-Host "== building wstgo $Version =="
 foreach ($t in $Targets) {
     # 输出名: Name 缺省用 GOARCH（armhf 场景覆盖）
     $archName = if ($t.Name) { $t.Name } else { $t.GOARCH }
     $ext = if ($t.GOOS -eq 'windows') { '.exe' } else { '' }
-    $out = "$OutDir/wstunnel-$($t.GOOS)-$archName$ext"
+    $out = "$OutDir/wstgo-$($t.GOOS)-$archName$ext"
     Write-Host "--> $($t.GOOS)/$($t.GOARCH)$(if ($t.GoARM) { " (GOARM=$($t.GoARM))" }) -> $out"
 
     $env:GOOS = $t.GOOS

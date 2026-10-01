@@ -17,7 +17,7 @@ var knownForwardTypes = map[string]bool{
 	"db":  true,
 }
 
-// Config 对应 wstunnel.toml 的 general/server/client 三段。
+// Config 对应 wstgo.toml 的 general/server/client 三段。
 // 与 run_mode 不匹配的段落加载时告警并忽略。
 type Config struct {
 	General GeneralConfig

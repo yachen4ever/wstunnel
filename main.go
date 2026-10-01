@@ -11,13 +11,13 @@ import (
 var version = "dev"
 
 func usage() {
-	fmt.Fprintf(os.Stderr, "wstunnel %s - TCP over WebSocket with ed25519 challenge-response auth\n", version)
+	fmt.Fprintf(os.Stderr, "wstgo %s - TCP over WebSocket with ed25519 challenge-response auth\n", version)
 	fmt.Fprintln(os.Stderr, "")
 	fmt.Fprintln(os.Stderr, "Usage:")
-	fmt.Fprintln(os.Stderr, "  wstunnel genkey  -dir <dir>")
-	fmt.Fprintln(os.Stderr, "  wstunnel server  -bind <addr> -target <addr> -authdir <dir> [-tlscert <crt> -tlskey <key>] [-v]")
-	fmt.Fprintln(os.Stderr, "  wstunnel client  -bind <addr> -url <(ws|wss)://...> -key <private.pem> [-v] [-insecure]")
-	fmt.Fprintln(os.Stderr, "  wstunnel run     -config <wstunnel.toml> [-v]   (multi-port forwarding)")
+	fmt.Fprintln(os.Stderr, "  wstgo genkey  -dir <dir>")
+	fmt.Fprintln(os.Stderr, "  wstgo server  -bind <addr> -target <addr> -authdir <dir> [-tlscert <crt> -tlskey <key>] [-v]")
+	fmt.Fprintln(os.Stderr, "  wstgo client  -bind <addr> -url <(ws|wss)://...> -key <private.pem> [-v] [-insecure]")
+	fmt.Fprintln(os.Stderr, "  wstgo run     -config <wstgo.toml> [-v]   (multi-port forwarding)")
 	fmt.Fprintln(os.Stderr, "")
 	fmt.Fprintln(os.Stderr, "Subcommands:")
 	fmt.Fprintln(os.Stderr, "  genkey   Generate an ed25519 keypair into -dir (private.pem + public.pem).")
@@ -28,7 +28,7 @@ func usage() {
 	fmt.Fprintln(os.Stderr, "           -url, authenticates with -key private key.")
 	fmt.Fprintln(os.Stderr, "           Use -insecure with wss:// to skip TLS cert verification (self-signed).")
 	fmt.Fprintln(os.Stderr, "  run      Run from a TOML config file: one process forwards multiple ports,")
-	fmt.Fprintln(os.Stderr, "           routed by label as /ws/<label>; `wstunnel -config <file>` is a shorthand.")
+	fmt.Fprintln(os.Stderr, "           routed by label as /ws/<label>; `wstgo -config <file>` is a shorthand.")
 	fmt.Fprintln(os.Stderr, "")
 	fmt.Fprintln(os.Stderr, "Common flags:")
 	fmt.Fprintln(os.Stderr, "  -v       Verbose: log per-byte traffic direction (off by default).")
@@ -42,7 +42,7 @@ func main() {
 
 	switch os.Args[1] {
 	case "version", "--version":
-		fmt.Println("wstunnel", version)
+		fmt.Println("wstgo", version)
 		return
 
 	case "genkey":
@@ -99,7 +99,7 @@ func main() {
 			args = os.Args[1:]
 		}
 		fs := flag.NewFlagSet("run", flag.ExitOnError)
-		configPath := fs.String("config", "", "path to wstunnel.toml")
+		configPath := fs.String("config", "", "path to wstgo.toml")
 		v := fs.Bool("v", false, "verbose: log per-byte traffic direction (with forward labels)")
 		_ = fs.Parse(args)
 		verbose = *v

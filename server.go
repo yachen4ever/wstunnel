@@ -40,7 +40,7 @@ var upgrader = websocket.Upgrader{
 // 由 -v 命令行开关打开。
 var verbose bool
 
-// Server 是 wstunnel 服务端（CLI 单目标模式）。
+// Server 是 wstgo 服务端（CLI 单目标模式）。
 type Server struct {
 	DestAddress string
 	Whitelist   *publicKeyWhitelist
@@ -137,7 +137,7 @@ func runServerConfig(cfg *Config) {
 		serveTunnel(ws, wl, fwd.Target, name, r.RemoteAddr)
 	})
 
-	log.Printf("wstunnel server listening on %s, %d forward(s):", cfg.General.Bind, len(forwards))
+	log.Printf("wstgo server listening on %s, %d forward(s):", cfg.General.Bind, len(forwards))
 	for _, name := range slices.Sorted(maps.Keys(forwards)) {
 		f := forwards[name]
 		log.Printf("  /ws/%s -> %s (type=%s)", name, f.Target, typeNameOrGeneric(f.Type))
@@ -257,9 +257,9 @@ func server(bindAddr, destAddr, authDir, tlsCert, tlsKey string) {
 	}
 	http.HandleFunc("/ws", s.handler)
 	if tlsCert != "" {
-		log.Printf("wstunnel server listening on %s (wss), forwarding to %s", bindAddr, destAddr)
+		log.Printf("wstgo server listening on %s (wss), forwarding to %s", bindAddr, destAddr)
 		log.Fatal(http.ListenAndServeTLS(bindAddr, tlsCert, tlsKey, nil))
 	}
-	log.Printf("wstunnel server listening on %s (ws), forwarding to %s", bindAddr, destAddr)
+	log.Printf("wstgo server listening on %s (ws), forwarding to %s", bindAddr, destAddr)
 	log.Fatal(http.ListenAndServe(bindAddr, nil))
 }

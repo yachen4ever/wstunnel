@@ -1,0 +1,28 @@
+# wstgo 客户端配置示例（v0.3.0+ 配置文件模式）
+# 复制到 /etc/wstgo/wstgo-client.toml 后按需修改；systemd 单元见 deploy/wstgo-client.service
+# 运行: wstgo run -config /etc/wstgo/wstgo-client.toml
+
+[general]
+run_mode = "client"
+# 服务端基础路径，实际连接 <url>/<标签>（标签须与服务端 [server.*] 一致）
+url = "wss://tunnel.example.com/ws"
+# 本机私钥（wstgo genkey 生成，私钥永不上传）
+key = "/etc/wstgo/client/private.pem"
+# 服务端 wss 用自签名证书且不便导入 CA 时置 true（ed25519 鉴权不受影响）
+allow_insecure = false
+
+[client]
+# 每个条目 = 一个本地监听端口，连到服务端同名标签的转发
+# type 可选，仅用于日志标识
+[client.ssh1]
+bind = "127.0.0.1:50022"
+type = "ssh"
+
+[client.pg1]
+bind = "127.0.0.1:55432"
+type = "db"
+
+# 更多转发示例（取消注释即启用）
+#[client.pg2]
+#bind = "127.0.0.1:55433"
+#type = "db"

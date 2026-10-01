@@ -1,0 +1,26 @@
+# wstgo 服务端配置示例（v0.3.0+ 配置文件模式）
+# 复制到 /etc/wstgo/wstgo-server.toml 后按需修改；systemd 单元见 deploy/wstgo-server.service
+# 运行: wstgo run -config /etc/wstgo/wstgo-server.toml
+
+[general]
+run_mode = "server"
+# WS 监听地址。前置 nginx 时保持 127.0.0.1（TLS 由 nginx 终结，推荐形态）；
+# 无 nginx 对外直连可改 "0.0.0.0:8888"（建议配合防火墙）
+bind = "127.0.0.1:8888"
+# 已授权客户端公钥目录（一个客户端一个 .pem，由 wstgo genkey 生成）
+auth_dir = "/etc/wstgo/server-keys"
+
+[server]
+# 每个条目 = 一条转发，注册在 /ws/<标签>；客户端 [client.*] 标签须与此一致
+[server.ssh1]
+target = "127.0.0.1:22"
+type = "ssh"          # 可选: ssh / db / 留空(generic)，用于校验防 typo 与日志标识
+
+[server.pg1]
+target = "127.0.0.1:5432"
+type = "db"
+
+# 转发到内网另一台机器的示例（取消注释即启用）
+#[server.pg2]
+#target = "192.168.5.11:5432"
+#type = "db"

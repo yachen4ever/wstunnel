@@ -195,6 +195,8 @@ wstgo run -config server.toml
 wstgo run -config client.toml
 ```
 
+可直接部署的完整配置模板见 `deploy/wstgo-server.toml.example` 与 `deploy/wstgo-client.toml.example`（systemd 单元默认引用它们）。
+
 规则与说明：
 
 - **标签**只允许字母、数字、`-`、`_`（它要作为 URL 路径段）。两端标签必须一致：不一致时服务端返回 404，客户端**立即报错不重试**，日志会提示检查 `[server.*]` 配置。
@@ -233,7 +235,7 @@ server -> client : [0x03]                              // 通过，进入数据�
 - `auth.go`    挑战-响应握手协议
 - `server.go`  服务端：HTTP 升级 + 鉴权 + TCP 拨号 + 桥接 + 心跳
 - `client.go`  客户端：TCP 监听 + WS 拨号(带重试) + 鉴权 + 桥接 + 心跳
-- `deploy/`    systemd 单元示例（server / client 各一）
+- `deploy/`    systemd 单元与 TOML 配置模板（server / client 各一）
 
 ## 日志
 
@@ -349,18 +351,19 @@ server {
 
 ## 部署：systemd 常驻
 
-长期运行建议用 systemd 托管，崩溃/重启后 3 秒内自动拉起。`deploy/` 下有 server / client 各一份单元示例：
+长期运行建议用 systemd 托管，崩溃/重启后 3 秒内自动拉起。`deploy/` 下有 server / client 各一份单元示例和配套 TOML 配置模板，单元默认走配置文件模式（`run -config`，多端口转发）：
 
 ```
 sudo cp binaries/wstgo-linux-amd64 /usr/local/bin/wstgo
 sudo mkdir -p /etc/wstgo
+sudo cp deploy/wstgo-server.toml.example /etc/wstgo/wstgo-server.toml
+# 编辑 /etc/wstgo/wstgo-server.toml：bind、auth_dir、各转发的 target/标签
 sudo cp deploy/wstgo-server.service /etc/systemd/system/
-# 按需修改 ExecStart 中的 -bind/-target/-authdir 等参数
 sudo systemctl daemon-reload
 sudo systemctl enable --now wstgo-server
 ```
 
-单元内置 `Restart=always` 与基础安全加固（文件系统只读、禁止提权），客户端同理安装 `wstgo-client.service`。日志用 `journalctl -u wstgo-server -f` 查看。
+单元内置 `Restart=always` 与基础安全加固（文件系统只读、禁止提权）。单隧道场景可按单元内注释切回 CLI 子命令；客户端同理用 `wstgo-client.service` + `wstgo-client.toml.example`。日志用 `journalctl -u wstgo-server -f` 查看。
 
 ## 已知限制
 

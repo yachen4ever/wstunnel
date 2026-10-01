@@ -1,19 +1,22 @@
 [Unit]
-Description=wstgo server (TCP over WebSocket tunnel)
+Description=wstgo server (TCP over WebSocket tunnel, multi-forward)
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-# 按实际部署修改：监听地址、目标服务、公钥目录
-# 原生 wss 场景追加: -tlscert /etc/wstgo/tls.crt -tlskey /etc/wstgo/tls.key
-# 多端口转发用配置文件模式替代整行 ExecStart:
-#   ExecStart=/usr/local/bin/wstgo run -config /etc/wstgo/wstgo.toml
-# 密钥等文件建议放 /etc/wstgo 下，与下方 ProtectSystem=strict 兼容（仍可读）
-ExecStart=/usr/local/bin/wstgo server \
-    -bind 127.0.0.1:8888 \
-    -target 127.0.0.1:5432 \
-    -authdir /etc/wstgo/server-keys
+# 推荐配置文件模式（v0.3.0+）：单进程多端口转发，按标签路由 /ws/<label>
+# 配置模板见 deploy/wstgo-server.toml.example，复制到 /etc/wstgo/ 后按需修改
+ExecStart=/usr/local/bin/wstgo run -config /etc/wstgo/wstgo-server.toml
+
+# 单隧道场景可改用 CLI 子命令（与上面配置文件模式的最小形态等价）：
+# ExecStart=/usr/local/bin/wstgo server \
+#     -bind 127.0.0.1:8888 \
+#     -target 127.0.0.1:5432 \
+#     -authdir /etc/wstgo/server-keys
+# 原生 wss（不前置 nginx）暂只支持 CLI，追加: -tlscert /etc/wstgo/tls.crt -tlskey /etc/wstgo/tls.key
+
+# 配置、密钥等文件建议放 /etc/wstgo 下，与下方 ProtectSystem=strict 兼容（仍可读）
 Restart=always
 RestartSec=3
 
